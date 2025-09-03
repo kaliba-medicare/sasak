@@ -1,0 +1,21 @@
+{
+  "name": "SASAK - Sistem Absensi Sederhana untuk Aparatur Kontrak",
+  "short_name": "SASAK",
+  "description": "Sistem absensi digital khusus untuk pegawai kontrak dengan fitur tracking waktu yang akurat dan mudah digunakan",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#3B82F6",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    },
+    {
+      "src": "/favicon-16.svg",
+      "sizes": "16x16",
+      "type": "image/svg+xml"
+    }
+  ]
+}
