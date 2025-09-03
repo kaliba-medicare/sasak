@@ -73,7 +73,7 @@ const AttendanceScreen = () => {
           );
 
           setDistance(Math.round(dist));
-          setIsInRange(dist <= 100); // 100 meter radius for testing
+          setIsInRange(dist <= 50); // 50 meter radius for testing
         },
         (error) => {
           console.error("Error getting location:", error);
@@ -154,7 +154,7 @@ const AttendanceScreen = () => {
     }
 
     // For testing, make location check less strict or allow override
-    if (!isInRange && distance && distance > 100) { // Changed from 30m to 100m for testing
+    if (!isInRange && distance && distance > 50) { // Changed from 30m to 50m for testing
       toast({
         title: "Lokasi Terlalu Jauh",
         description: `Jarak Anda ${distance}m dari kantor. Mendekatlah ke kantor untuk absensi.`,
@@ -473,7 +473,7 @@ const AttendanceScreen = () => {
                 } else {
                   return (
                     <div className="text-gray-600">
-                      Waktu check-in: 07:00 - 12:00 WITA. Setelah 12:00 hanya bisa check-out dengan status terlambat.
+                      Waktu check-in: 07:00 - 12:00 WITA.
                     </div>
                   );
                 }
@@ -535,7 +535,7 @@ const AttendanceScreen = () => {
 
           {!isInRange && (
             <p className="text-sm text-muted-foreground text-center">
-              Mendekatlah ke kantor (radius 100m) untuk melakukan absensi
+              Mendekatlah ke kantor (radius 50m) untuk melakukan absensi
             </p>
           )}
         </CardContent>
