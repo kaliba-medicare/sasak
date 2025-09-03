@@ -76,14 +76,31 @@ export const useAuth = () => {
   }, [fetchProfile]);
 
   const signIn = async (email: string, password: string) => {
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-    if (!error && data.user) {
-      await fetchProfile(data.user);
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+      
+      if (error) {
+        console.error("Authentication error:", error);
+        return { data, error };
+      }
+      
+      if (data.user) {
+        await fetchProfile(data.user);
+      }
+      
+      return { data, error };
+    } catch (error) {
+      console.error("Unexpected error during sign in:", error);
+      return { 
+        data: null, 
+        error: { 
+          message: "Terjadi kesalahan yang tidak terduga saat login"
+        } as any 
+      };
     }
-    return { data, error };
   };
 
   const signOut = async () => {
