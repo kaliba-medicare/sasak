@@ -54,8 +54,14 @@ const EmployeeManagementPage = () => {
     if (!window.confirm("Apakah Anda yakin ingin menghapus pegawai ini?")) return;
 
     try {
-      const { error } = await supabase.auth.admin.deleteUser(userId);
+      // Delete the profile first, which will trigger cascade delete of user due to foreign key
+      const { error } = await supabase
+        .from('profiles')
+        .delete()
+        .eq('user_id', userId);
+        
       if (error) throw error;
+      
       toast({ title: "Berhasil", description: "Pegawai berhasil dihapus" });
       fetchEmployees();
     } catch (error: any) {

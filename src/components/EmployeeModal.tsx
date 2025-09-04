@@ -48,39 +48,38 @@ const EmployeeModal = ({ employee, onSuccess, children }: EmployeeModalProps) =>
         if (error) throw error;
         toast({ title: "Berhasil", description: "Data pegawai berhasil diperbarui" });
       } else {
-        // Create new employee with admin service role
+        // Create new employee using regular signup
         const finalEmployeeId = employeeId || generateEmployeeId();
         
-        // First create the user account
-        const { data: authData, error: authError } = await supabase.auth.admin.createUser({
+        // First create the user account using regular signup
+        const { data: authData, error: authError } = await supabase.auth.signUp({
           email: email,
           password: password,
-          email_confirm: true,
-          user_metadata: {
-            name: name,
-            employee_id: finalEmployeeId,
-            position: position,
-            department: department,
-            role: role
+          options: {
+            data: {
+              name: name,
+              employee_id: finalEmployeeId,
+              position: position,
+              department: department,
+              role: role
+            }
           }
         });
         
         if (authError) throw authError;
         
         if (authData.user) {
-          // Then create/update the profile
+          // Update the profile that was created by the trigger with additional role info
           const { error: profileError } = await supabase
             .from('profiles')
-            .upsert({
-              id: authData.user.id,
-              user_id: authData.user.id,
+            .update({
               name: name,
               employee_id: finalEmployeeId,
               position: position,
               department: department,
-              role: role,
-              email: email
-            });
+              role: role
+            })
+            .eq('user_id', authData.user.id);
           
           if (profileError) throw profileError;
         }
