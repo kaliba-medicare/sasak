@@ -157,10 +157,14 @@ const MonthlyAttendancePage = () => {
         
         const presentDays = workingDayAttendance.filter(a => a.status === 'present').length;
         const lateDays = workingDayAttendance.filter(a => a.status === 'late').length;
-        const attendedDays = presentDays + lateDays;
-        const absentDays = totalWorkingDays - attendedDays;
+        // Late employees are also considered as present (hadir) for attendance purposes
+        const totalPresentDays = presentDays + lateDays; 
+        const absentDays = totalWorkingDays - totalPresentDays;
         
-        const presentPercentage = totalWorkingDays > 0 ? Math.round((presentDays / totalWorkingDays) * 100) : 0;
+        // Debug log to verify calculation
+        console.log(`Employee ${profile.employee_id}: present=${presentDays}, late=${lateDays}, totalPresent=${totalPresentDays}, absent=${absentDays}`);
+        
+        const presentPercentage = totalWorkingDays > 0 ? Math.round((totalPresentDays / totalWorkingDays) * 100) : 0;
         const latePercentage = totalWorkingDays > 0 ? Math.round((lateDays / totalWorkingDays) * 100) : 0;
         const absentPercentage = totalWorkingDays > 0 ? Math.round((absentDays / totalWorkingDays) * 100) : 0;
         
@@ -171,7 +175,7 @@ const MonthlyAttendancePage = () => {
           department: profile.department || 'Unknown Department',
           position: profile.position || 'Unknown Position',
           total_days: totalWorkingDays,
-          present_days: presentDays,
+          present_days: totalPresentDays, // This now includes both 'present' and 'late' status
           late_days: lateDays,
           absent_days: absentDays,
           present_percentage: presentPercentage,
@@ -301,7 +305,7 @@ const MonthlyAttendancePage = () => {
       'Nama': item.name,
       'Departemen': item.department,
       'Total Hari Kerja': `${item.total_days} hari (tidak termasuk weekend & libur)`,
-      'Hadir': item.present_days,
+      'Hadir (Termasuk Terlambat)': item.present_days, // This includes both on-time and late
       'Terlambat': item.late_days,
       'Tidak Hadir': item.absent_days,
       'Persentase Hadir': `${item.present_percentage}%`,
@@ -388,7 +392,8 @@ const MonthlyAttendancePage = () => {
         </div>
         <p className="text-sm text-muted-foreground">
           Rekap kehadiran pegawai untuk bulan {new Date(selectedMonth + '-01').toLocaleDateString('id-ID', { year: 'numeric', month: 'long' })} 
-          (tidak termasuk weekend dan hari libur nasional)
+          (tidak termasuk weekend dan hari libur nasional). <br/>
+          <span className="font-medium">Catatan:</span> Kolom "Hadir" mencakup pegawai yang datang tepat waktu dan terlambat.
         </p>
       </div>
 
@@ -412,7 +417,7 @@ const MonthlyAttendancePage = () => {
               <UserCheck className="w-8 h-8 text-green-600" />
               <div>
                 <div className="text-2xl font-bold text-green-600">{avgPresentPercentage}%</div>
-                <div className="text-sm text-muted-foreground">Rata-rata Hadir</div>
+                <div className="text-sm text-muted-foreground">Rata-rata Hadir (Termasuk Terlambat)</div>
               </div>
             </div>
           </CardContent>
@@ -498,7 +503,7 @@ const MonthlyAttendancePage = () => {
                   <TableHead>Nama</TableHead>
                   <TableHead>Departemen</TableHead>
                   <TableHead className="text-center">Total Hari</TableHead>
-                  <TableHead className="text-center">Hadir</TableHead>
+                  <TableHead className="text-center">Hadir*</TableHead>
                   <TableHead className="text-center">Terlambat</TableHead>
                   <TableHead className="text-center">Tidak Hadir</TableHead>
                   <TableHead className="text-center">% Hadir</TableHead>
@@ -633,6 +638,12 @@ const MonthlyAttendancePage = () => {
                 )}
               </TableBody>
             </Table>
+          </div>
+          
+          {/* Legend */}
+          <div className="text-xs text-gray-600 mt-2">
+            <p>* Hadir = Total kehadiran (termasuk yang terlambat)</p>
+            <p>Data ini tidak termasuk weekend dan hari libur nasional</p>
           </div>
         </CardContent>
       </Card>
