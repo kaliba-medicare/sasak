@@ -26,12 +26,60 @@ const EmployeeManagementPage = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const { toast } = useToast();
 
+  // Add a test function to verify admin permissions
+  const testAdminPermissions = async () => {
+    try {
+      const { data: currentUser } = await supabase.auth.getUser();
+      console.log('Current user:', currentUser.user?.id);
+      
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('user_id', currentUser.user?.id)
+        .single();
+      
+      console.log('User profile:', profile);
+      
+      // Test if we can view all profiles (admin privilege)
+      const { data: allProfiles, error } = await supabase
+        .from('profiles')
+        .select('id, name, role')
+        .limit(5);
+      
+      console.log('Can view all profiles:', !error, allProfiles);
+      
+      if (error) {
+        console.error('Error viewing profiles:', error);
+      }
+    } catch (error) {
+      console.error('Permission test error:', error);
+    }
+  };
+
+  // Call test function on component mount (for debugging)
   useEffect(() => {
+    testAdminPermissions();
     fetchEmployees();
   }, []);
 
   const fetchEmployees = async () => {
     try {
+      // Check admin status first
+      const { data: currentUser } = await supabase.auth.getUser();
+      if (!currentUser.user) {
+        throw new Error('User not authenticated');
+      }
+
+      const { data: currentProfile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('user_id', currentUser.user.id)
+        .single();
+
+      if (currentProfile?.role !== 'admin') {
+        throw new Error('Access denied: Admin privileges required');
+      }
+
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
@@ -40,9 +88,10 @@ const EmployeeManagementPage = () => {
       if (error) throw error;
       setEmployees(data || []);
     } catch (error: any) {
+      console.error('Fetch employees error:', error);
       toast({
         title: "Error",
-        description: "Gagal mengambil data pegawai",
+        description: error.message || "Gagal mengambil data pegawai",
         variant: "destructive",
       });
     } finally {
@@ -54,18 +103,72 @@ const EmployeeManagementPage = () => {
     if (!window.confirm("Apakah Anda yakin ingin menghapus pegawai ini?")) return;
 
     try {
-      // Delete the profile first, which will trigger cascade delete of user due to foreign key
-      const { error } = await supabase
+      console.log('Starting delete process for user:', userId);
+      
+      // Verify current user is admin
+      const { data: currentUser } = await supabase.auth.getUser();
+      if (!currentUser.user) {
+        throw new Error('User not authenticated');
+      }
+
+      console.log('Current user ID:', currentUser.user.id);
+
+      // Check admin status
+      const { data: currentProfile, error: profileError } = await supabase
+        .from('profiles')
+        .select('role, name')
+        .eq('user_id', currentUser.user.id)
+        .single();
+
+      console.log('Current user profile:', currentProfile);
+      
+      if (profileError) {
+        console.error('Error checking admin role:', profileError);
+        throw new Error(`Tidak dapat memverifikasi status admin: ${profileError.message}`);
+      }
+
+      if (currentProfile?.role !== 'admin') {
+        throw new Error('Anda tidak memiliki izin untuk menghapus pegawai. Role saat ini: ' + (currentProfile?.role || 'tidak ditemukan'));
+      }
+
+      // Get the employee to be deleted for logging
+      const { data: targetEmployee } = await supabase
+        .from('profiles')
+        .select('name, employee_id')
+        .eq('user_id', userId)
+        .single();
+      
+      console.log('Target employee:', targetEmployee);
+
+      // Attempt to delete the profile
+      console.log('Attempting to delete profile...');
+      const { error: deleteError, data: deleteData } = await supabase
         .from('profiles')
         .delete()
-        .eq('user_id', userId);
+        .eq('user_id', userId)
+        .select(); // Select to see what was deleted
         
-      if (error) throw error;
+      console.log('Delete result:', { error: deleteError, data: deleteData });
+        
+      if (deleteError) {
+        console.error('Delete error details:', deleteError);
+        throw new Error(`Gagal menghapus pegawai: ${deleteError.message}`);
+      }
       
-      toast({ title: "Berhasil", description: "Pegawai berhasil dihapus" });
-      fetchEmployees();
+      if (!deleteData || deleteData.length === 0) {
+        throw new Error('Tidak ada data yang dihapus. Pegawai mungkin tidak ditemukan.');
+      }
+      
+      console.log('Delete successful');
+      toast({ title: "Berhasil", description: `Pegawai ${targetEmployee?.name || 'Unknown'} berhasil dihapus` });
+      await fetchEmployees();
     } catch (error: any) {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+      console.error('Delete error:', error);
+      toast({ 
+        title: "Error", 
+        description: error.message || 'Gagal menghapus pegawai',
+        variant: "destructive" 
+      });
     }
   };
 

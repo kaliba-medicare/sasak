@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Calendar, Clock, MapPin, Filter, TrendingUp } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
+import { formatTimeWITA, formatDateWITA } from "@/lib/timezone";
 
 interface AttendanceRecord {
   id: string;
@@ -87,14 +88,6 @@ const HistoryScreen = () => {
       weekday: 'short',
       day: '2-digit',
       month: 'short',
-    });
-  };
-
-  const formatTime = (isoString?: string) => {
-    if (!isoString) return null;
-    return new Date(isoString).toLocaleTimeString('id-ID', {
-      hour: '2-digit',
-      minute: '2-digit'
     });
   };
 
@@ -239,9 +232,9 @@ const HistoryScreen = () => {
                   </div>
                   {record.check_in_time && record.check_out_time ? (
                     <div className="text-sm">
-                      <span className="text-success font-medium">{formatTime(record.check_in_time)}</span>
+                      <span className="text-success font-medium">{formatTimeWITA(record.check_in_time)}</span>
                       <span className="text-muted-foreground mx-2">-</span>
-                      <span className="text-primary font-medium">{formatTime(record.check_out_time)}</span>
+                      <span className="text-primary font-medium">{formatTimeWITA(record.check_out_time)}</span>
                       {(() => {
                         const workingHours = calculateWorkingHours(record.check_in_time, record.check_out_time);
                         return workingHours ? (
@@ -253,7 +246,7 @@ const HistoryScreen = () => {
                     </div>
                   ) : record.check_in_time ? (
                     <div className="text-sm">
-                      <span className="text-success font-medium">{formatTime(record.check_in_time)}</span>
+                      <span className="text-success font-medium">{formatTimeWITA(record.check_in_time)}</span>
                       <span className="text-muted-foreground ml-2">- Belum checkout</span>
                     </div>
                   ) : (

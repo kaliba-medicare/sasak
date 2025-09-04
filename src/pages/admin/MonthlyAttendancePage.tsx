@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Calendar, Users, Clock, UserCheck, Search, Download, RefreshCw, TrendingUp } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { getTodayDateWITA, formatTimeWITA, formatDateWITA } from "@/lib/timezone";
 import * as XLSX from 'xlsx';
 
 interface MonthlyAttendanceRecord {

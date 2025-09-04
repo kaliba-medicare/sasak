@@ -1,4 +1,8 @@
--- Create function to get today's attendance with employee details using efficient JOIN
+-- Fix timezone issue for today's attendance function
+-- Drop the old function and create new one with proper WITA timezone
+DROP FUNCTION IF EXISTS get_today_attendance();
+
+-- Create function to get today's attendance with employee details using Asia/Makassar timezone
 CREATE OR REPLACE FUNCTION get_today_attendance()
 RETURNS TABLE (
   id UUID,
@@ -17,6 +21,7 @@ LANGUAGE SQL
 STABLE
 AS $$
   -- Uses efficient JOIN instead of N+1 queries
+  -- Uses Asia/Makassar timezone for proper WITA date filtering
   SELECT 
     a.id,
     a.employee_id,
@@ -31,7 +36,7 @@ AS $$
     p.position
   FROM attendance a
   JOIN profiles p ON a.employee_id = p.employee_id
-  WHERE a.date = (CURRENT_DATE AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Makassar')::DATE
+  WHERE a.date = (NOW() AT TIME ZONE 'Asia/Makassar')::DATE
   ORDER BY a.check_in_time DESC;
 $$;
 

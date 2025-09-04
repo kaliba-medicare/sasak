@@ -6,6 +6,7 @@ import { MapPin, Clock, CheckCircle, XCircle, Navigation } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
+import { getNowMakassar, getTodayDateWITA, formatTimeWITA } from "@/lib/timezone";
 
 // Target location coordinates (Lombok area)
 const TARGET_LOCATION = {
@@ -24,12 +25,7 @@ interface AttendanceRecord {
   date?: string;
 }
 
-// ✅ Helper: waktu Asia/Makassar
-const getNowMakassar = () => {
-  return new Date(
-    new Date().toLocaleString("en-US", { timeZone: "Asia/Makassar" })
-  );
-};
+
 
 const AttendanceScreen = () => {
   const [currentLocation, setCurrentLocation] = useState<{ lat: number; lng: number } | null>(null);
@@ -92,7 +88,9 @@ const AttendanceScreen = () => {
   const fetchTodayAttendance = async () => {
     if (!user) return;
 
-    const today = getNowMakassar().toISOString().split("T")[0];
+    const today = getTodayDateWITA();
+    console.log('Fetching attendance for WITA date:', today);
+    console.log('User ID:', user.id);
 
     const { data, error } = await supabase
       .from("attendance")
@@ -104,7 +102,10 @@ const AttendanceScreen = () => {
     if (error && error.code !== "PGRST116") {
       console.error("Error fetching attendance:", error);
     } else if (data) {
+      console.log('Found attendance data:', data);
       setTodayAttendance(data);
+    } else {
+      console.log('No attendance data found for today');
     }
   };
 
@@ -322,15 +323,6 @@ const AttendanceScreen = () => {
     });
   };
 
-  const formatTime = (isoString?: string) => {
-    if (!isoString) return null;
-    return new Date(isoString).toLocaleTimeString("id-ID", {
-      hour: "2-digit",
-      minute: "2-digit",
-      timeZone: "Asia/Makassar",
-    });
-  };
-
   return (
     <div className="p-4 space-y-6 pb-20">
       {/* Header */}
@@ -404,7 +396,7 @@ const AttendanceScreen = () => {
                   <div className={`font-bold ${
                     todayAttendance.status === 'late' ? 'text-orange-600' : 'text-success'
                   }`}>
-                    {formatTime(todayAttendance.check_in_time)}
+                    {formatTimeWITA(todayAttendance.check_in_time)}
                   </div>
                   <div className="text-xs mt-1">
                     <Badge variant={todayAttendance.status === 'late' ? 'secondary' : 'default'} className="text-xs">
@@ -434,7 +426,7 @@ const AttendanceScreen = () => {
               {todayAttendance?.check_out_time ? (
                 <div>
                   <div className="font-bold text-primary">
-                    {formatTime(todayAttendance.check_out_time)}
+                    {formatTimeWITA(todayAttendance.check_out_time)}
                   </div>
                   <div className="text-xs text-muted-foreground mt-1">
                     {TARGET_LOCATION.name}

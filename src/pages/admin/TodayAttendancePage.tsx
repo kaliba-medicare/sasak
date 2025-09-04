@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { CalendarDays, Users, Clock, UserCheck, Search, Download, RefreshCw } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { getTodayDateWITA, formatTimeWITA, formatDateWITA } from "@/lib/timezone";
 import * as XLSX from 'xlsx';
 
 interface TodayAttendance {
@@ -30,7 +31,7 @@ const TodayAttendancePage = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [departmentFilter, setDepartmentFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+  const [selectedDate, setSelectedDate] = useState(getTodayDateWITA());
   const [departments, setDepartments] = useState<string[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const { toast } = useToast();
@@ -85,6 +86,8 @@ const TodayAttendancePage = () => {
     
     try {
       console.log('Fetching attendance for date:', selectedDate);
+      console.log('Current WITA date:', getTodayDateWITA());
+      console.log('Current UTC date:', new Date().toISOString().split('T')[0]);
       
       // First, get attendance data for selected date
       const { data: attendanceData, error: attendanceError } = await supabase
@@ -178,14 +181,14 @@ const TodayAttendancePage = () => {
   };
 
   const exportToExcel = () => {
-    const selectedDateFormatted = new Date(selectedDate).toLocaleDateString('id-ID');
+    const selectedDateFormatted = formatDateWITA(selectedDate);
     const exportData = filteredAttendance.map(item => ({
       'ID Pegawai': item.employee_id,
       'Nama': item.name,
       'Departemen': item.department,
       'Status': getStatusText(item.status),
-      'Waktu Masuk': item.check_in_time ? new Date(item.check_in_time).toLocaleTimeString('id-ID') : '-',
-      'Waktu Keluar': item.check_out_time ? new Date(item.check_out_time).toLocaleTimeString('id-ID') : '-'
+      'Waktu Masuk': item.check_in_time ? formatTimeWITA(item.check_in_time) : '-',
+      'Waktu Keluar': item.check_out_time ? formatTimeWITA(item.check_out_time) : '-'
     }));
 
     const ws = XLSX.utils.json_to_sheet(exportData);
@@ -264,7 +267,7 @@ const TodayAttendancePage = () => {
           </div>
         </div>
         <p className="text-sm text-muted-foreground">
-          Daftar pegawai yang telah melakukan absensi pada tanggal {new Date(selectedDate).toLocaleDateString('id-ID')}
+          Daftar pegawai yang telah melakukan absensi pada tanggal {formatDateWITA(selectedDate)}
         </p>
       </div>
 
@@ -325,7 +328,7 @@ const TodayAttendancePage = () => {
           <CardTitle className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Users className="w-5 h-5" />
-              Data Absensi - {new Date(selectedDate).toLocaleDateString('id-ID')}
+              Data Absensi - {formatDateWITA(selectedDate)}
             </div>
             <div className="text-sm text-muted-foreground">
               {filteredAttendance.length} dari {totalEmployees} data
@@ -403,19 +406,13 @@ const TodayAttendancePage = () => {
                     </TableCell>
                     <TableCell>
                       {item.check_in_time 
-                        ? new Date(item.check_in_time).toLocaleTimeString('id-ID', {
-                            hour: '2-digit',
-                            minute: '2-digit'
-                          })
+                        ? formatTimeWITA(item.check_in_time)
                         : '-'
                       }
                     </TableCell>
                     <TableCell>
                       {item.check_out_time 
-                        ? new Date(item.check_out_time).toLocaleTimeString('id-ID', {
-                            hour: '2-digit',
-                            minute: '2-digit'
-                          })
+                        ? formatTimeWITA(item.check_out_time)
                         : '-'
                       }
                     </TableCell>
@@ -425,7 +422,7 @@ const TodayAttendancePage = () => {
                   <TableRow>
                     <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
                       {attendanceData.length === 0 
-                        ? `Belum ada data absensi pada tanggal ${new Date(selectedDate).toLocaleDateString('id-ID')}`
+                        ? `Belum ada data absensi pada tanggal ${formatDateWITA(selectedDate)}`
                         : "Tidak ada data yang sesuai dengan filter"
                       }
                     </TableCell>
