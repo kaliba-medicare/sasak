@@ -69,7 +69,7 @@ const AttendanceScreen = () => {
           );
 
           setDistance(Math.round(dist));
-          setIsInRange(dist <= 50000); // 50000 meter radius for testing
+          setIsInRange(dist <= 50); // 50 meter radius for testing
         },
         (error) => {
           console.error("Error getting location:", error);
@@ -155,7 +155,7 @@ const AttendanceScreen = () => {
     }
 
     // For testing, make location check less strict or allow override
-    if (!isInRange && distance && distance > 50000) { // Changed from 30m to 50000m for testing
+    if (!isInRange && distance && distance > 50) { // Changed from 30m to 50m for testing
       toast({
         title: "Lokasi Terlalu Jauh",
         description: `Jarak Anda ${distance}m dari kantor. Mendekatlah ke kantor untuk absensi.`,
@@ -527,7 +527,7 @@ const AttendanceScreen = () => {
 
           {!isInRange && (
             <p className="text-sm text-muted-foreground text-center">
-              Mendekatlah ke kantor (radius 50000m) untuk melakukan absensi
+              Mendekatlah ke kantor (radius 50m) untuk melakukan absensi
             </p>
           )}
         </CardContent>
