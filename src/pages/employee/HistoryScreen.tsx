@@ -83,12 +83,7 @@ const HistoryScreen = () => {
   };
 
   const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('id-ID', {
-      weekday: 'short',
-      day: '2-digit',
-      month: 'short',
-    });
+    return formatDateWITA(dateString);
   };
 
   const calculateWorkingHours = (checkIn?: string, checkOut?: string) => {

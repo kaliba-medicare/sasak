@@ -38,8 +38,10 @@ const MonthlyAttendancePage = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [departmentFilter, setDepartmentFilter] = useState("all");
   const [selectedMonth, setSelectedMonth] = useState(() => {
-    const today = new Date();
-    return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+    // Use WITA timezone for current date
+    const today = getTodayDateWITA();
+    const [year, month] = today.split('-');
+    return `${year}-${month}`;
   });
   const [departments, setDepartments] = useState<string[]>([]);
   const [refreshing, setRefreshing] = useState(false);
@@ -87,9 +89,11 @@ const MonthlyAttendancePage = () => {
       const startDate = `${year}-${month}-01`;
       const endDate = `${year}-${month}-${new Date(parseInt(year), parseInt(month), 0).getDate()}`;
       
-      console.log('Fetching attendance for month:', selectedMonth, 'from', startDate, 'to', endDate);
+      console.log('=== MONTHLY ATTENDANCE DEBUG ===');
+      console.log('Selected month:', selectedMonth);
+      console.log('Date range:', startDate, 'to', endDate);
       
-      // First, get all attendance data for the month
+      // First, get all attendance data for the month with proper deduplication
       const { data: attendanceData, error: attendanceError } = await supabase
         .from('attendance')
         .select(`
@@ -103,14 +107,32 @@ const MonthlyAttendancePage = () => {
         .gte('date', startDate)
         .lte('date', endDate)
         .order('employee_id')
-        .order('date');
+        .order('date')
+        .order('id', { ascending: false }); // Get latest records first for deduplication
 
       if (attendanceError) {
         console.error('Attendance query error:', attendanceError);
         throw attendanceError;
       }
       
-      console.log('Monthly attendance data:', attendanceData);
+      console.log('Raw attendance data count:', attendanceData?.length || 0);
+      console.log('Sample attendance data:', attendanceData?.slice(0, 3));
+      
+      // Check for duplicate records (same employee_id + date)
+      const recordKeys = attendanceData?.map(a => `${a.employee_id}-${a.date}`) || [];
+      const uniqueKeys = new Set(recordKeys);
+      if (recordKeys.length !== uniqueKeys.size) {
+        console.warn('⚠️ DUPLICATE RECORDS DETECTED IN DATABASE!');
+        const duplicates = recordKeys.filter((key, index) => recordKeys.indexOf(key) !== index);
+        console.warn('Duplicate keys:', [...new Set(duplicates)]);
+        
+        // Find actual duplicate records
+        const duplicateRecords = attendanceData?.filter(record => {
+          const key = `${record.employee_id}-${record.date}`;
+          return duplicates.includes(key);
+        });
+        console.warn('Duplicate records:', duplicateRecords);
+      }
       
       // Get all profiles
       const { data: profilesData, error: profilesError } = await supabase
@@ -122,7 +144,13 @@ const MonthlyAttendancePage = () => {
         throw profilesError;
       }
       
-      console.log('Profiles data:', profilesData);
+      console.log('Profiles data count:', profilesData?.length || 0);
+      
+      if (!profilesData || profilesData.length === 0) {
+        console.warn('No profiles found');
+        setAttendanceData([]);
+        return;
+      }
       
       // Create profiles map
       const profilesMap = new Map();
@@ -132,12 +160,34 @@ const MonthlyAttendancePage = () => {
       
       // Group attendance by employee
       const attendanceByEmployee = new Map();
+      
+      // Remove duplicates and group by employee
+      const processedRecords = new Map();
       attendanceData?.forEach(record => {
+        const key = `${record.employee_id}-${record.date}`;
+        
+        // If we already have a record for this employee-date, keep the latest one (by ID)
+        if (processedRecords.has(key)) {
+          const existing = processedRecords.get(key);
+          // Keep the record with the higher ID (likely the latest)
+          if (record.id > existing.id) {
+            console.log(`Replacing duplicate record for ${key}: ${existing.id} -> ${record.id}`);
+            processedRecords.set(key, record);
+          }
+        } else {
+          processedRecords.set(key, record);
+        }
+      });
+      
+      // Now group the deduplicated records by employee
+      processedRecords.forEach(record => {
         if (!attendanceByEmployee.has(record.employee_id)) {
           attendanceByEmployee.set(record.employee_id, []);
         }
         attendanceByEmployee.get(record.employee_id).push(record);
       });
+      
+      console.log(`Processed records: ${processedRecords.size} unique records from ${attendanceData?.length || 0} total`);
       
       // Calculate monthly summary for each employee
       const monthlySummary: MonthlyAttendanceRecord[] = [];
@@ -149,11 +199,30 @@ const MonthlyAttendancePage = () => {
       profilesData?.forEach(profile => {
         const employeeAttendance = attendanceByEmployee.get(profile.employee_id) || [];
         
+        console.log(`\n=== DEBUGGING EMPLOYEE ${profile.employee_id} (${profile.name}) ===`);
+        console.log('Raw attendance records:', employeeAttendance);
+        
+        // Check for duplicate dates
+        const dateCount = new Map();
+        employeeAttendance.forEach(a => {
+          const count = dateCount.get(a.date) || 0;
+          dateCount.set(a.date, count + 1);
+        });
+        
+        const duplicateDates = Array.from(dateCount.entries()).filter(([date, count]) => count > 1);
+        if (duplicateDates.length > 0) {
+          console.warn('⚠️ DUPLICATE DATES FOUND:', duplicateDates);
+        }
+        
         // Only count attendance on working days (exclude holidays and weekends)
         const workingDayAttendance = employeeAttendance.filter(a => {
           const holidayInfo = isHolidayOrWeekend(a.date);
-          return !holidayInfo.isHoliday;
+          const isWorkingDay = !holidayInfo.isHoliday;
+          console.log(`Date ${a.date}: isWorkingDay=${isWorkingDay}, status=${a.status}`);
+          return isWorkingDay;
         });
+        
+        console.log('Working day attendance:', workingDayAttendance);
         
         const presentDays = workingDayAttendance.filter(a => a.status === 'present').length;
         const lateDays = workingDayAttendance.filter(a => a.status === 'late').length;
@@ -161,8 +230,20 @@ const MonthlyAttendancePage = () => {
         const totalPresentDays = presentDays + lateDays; 
         const absentDays = totalWorkingDays - totalPresentDays;
         
-        // Debug log to verify calculation
-        console.log(`Employee ${profile.employee_id}: present=${presentDays}, late=${lateDays}, totalPresent=${totalPresentDays}, absent=${absentDays}`);
+        // Enhanced debug log to verify calculation
+        console.log(`📊 CALCULATION RESULTS:`);
+        console.log(`   - Total working days: ${totalWorkingDays}`);
+        console.log(`   - Present days (status='present'): ${presentDays}`);
+        console.log(`   - Late days (status='late'): ${lateDays}`);
+        console.log(`   - Total present days (present + late): ${totalPresentDays}`);
+        console.log(`   - Absent days: ${absentDays}`);
+        console.log(`   - Working day records count: ${workingDayAttendance.length}`);
+        
+        // Check if calculation makes sense
+        if (totalPresentDays > totalWorkingDays) {
+          console.error('🚨 ERROR: totalPresentDays > totalWorkingDays!');
+          console.error('This indicates duplicate records or calculation error');
+        }
         
         const presentPercentage = totalWorkingDays > 0 ? Math.round((totalPresentDays / totalWorkingDays) * 100) : 0;
         const latePercentage = totalWorkingDays > 0 ? Math.round((lateDays / totalWorkingDays) * 100) : 0;
@@ -209,22 +290,30 @@ const MonthlyAttendancePage = () => {
   };
 
   const isHolidayOrWeekend = (dateString: string) => {
-    const date = new Date(dateString);
-    const dayOfWeek = date.getDay();
-    const year = date.getFullYear();
-    const holidays = getIndonesianHolidays(year);
-    
-    // Check if it's weekend
-    if (dayOfWeek === 0 || dayOfWeek === 6) {
-      return { isHoliday: true, type: dayOfWeek === 0 ? 'Minggu' : 'Sabtu' };
+    try {
+      // Use WITA timezone to determine day of week
+      const date = new Date(dateString + 'T12:00:00'); // Noon to avoid timezone issues
+      const year = parseInt(dateString.split('-')[0]);
+      const holidays = getIndonesianHolidays(year);
+      
+      // Get day of week in WITA timezone
+      const dayOfWeek = date.getDay();
+      
+      // Check if it's weekend
+      if (dayOfWeek === 0 || dayOfWeek === 6) {
+        return { isHoliday: true, type: dayOfWeek === 0 ? 'Minggu' : 'Sabtu' };
+      }
+      
+      // Check if it's national holiday
+      if (holidays.includes(dateString)) {
+        return { isHoliday: true, type: 'Hari Libur Nasional' };
+      }
+      
+      return { isHoliday: false, type: null };
+    } catch (error) {
+      console.error('Error checking holiday/weekend for date:', dateString, error);
+      return { isHoliday: false, type: null };
     }
-    
-    // Check if it's national holiday
-    if (holidays.includes(dateString)) {
-      return { isHoliday: true, type: 'Hari Libur Nasional' };
-    }
-    
-    return { isHoliday: false, type: null };
   };
 
   const getIndonesianHolidays = (year: number) => {
@@ -248,31 +337,28 @@ const MonthlyAttendancePage = () => {
   };
 
   const getWorkingDaysInMonth = (year: number, month: number) => {
-    const daysInMonth = new Date(year, month + 1, 0).getDate();
-    const holidays = getIndonesianHolidays(year);
-    let workingDays = 0;
-    
-    for (let day = 1; day <= daysInMonth; day++) {
-      const date = new Date(year, month, day);
-      const dayOfWeek = date.getDay();
-      const dateString = date.toISOString().split('T')[0];
+    try {
+      const daysInMonth = new Date(year, month + 1, 0).getDate();
+      const holidays = getIndonesianHolidays(year);
+      let workingDays = 0;
       
-      // Skip weekends (Saturday = 6, Sunday = 0)
-      if (dayOfWeek === 0 || dayOfWeek === 6) {
-        continue;
+      for (let day = 1; day <= daysInMonth; day++) {
+        // Create date string in YYYY-MM-DD format
+        const dateString = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        const holidayInfo = isHolidayOrWeekend(dateString);
+        
+        // Count as working day if not holiday/weekend
+        if (!holidayInfo.isHoliday) {
+          workingDays++;
+        }
       }
       
-      // Skip national holidays
-      if (holidays.includes(dateString)) {
-        continue;
-      }
-      
-      // Count as working day
-      workingDays++;
+      console.log(`Working days in ${year}-${month + 1}: ${workingDays} (excluding weekends and holidays)`);
+      return workingDays;
+    } catch (error) {
+      console.error('Error calculating working days:', error);
+      return 22; // Default fallback
     }
-    
-    console.log(`Working days in ${year}-${month + 1}: ${workingDays} (excluding weekends and holidays)`);
-    return workingDays;
   };
 
   const handleRefresh = () => {
@@ -558,10 +644,11 @@ const MonthlyAttendancePage = () => {
                                   attendanceMap.set(detail.date, detail);
                                 });
                                 
-                                // Generate all days of the month
+                                // Generate all days of the month with proper WITA handling
                                 for (let day = 1; day <= daysInMonth; day++) {
-                                  const date = new Date(parseInt(year), parseInt(month) - 1, day);
-                                  const dateString = date.toISOString().split('T')[0];
+                                  // Create consistent date string format
+                                  const dateString = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                                  const date = new Date(dateString + 'T12:00:00'); // Noon to avoid timezone issues
                                   const holidayInfo = isHolidayOrWeekend(dateString);
                                   const attendance = attendanceMap.get(dateString);
                                   
@@ -593,10 +680,7 @@ const MonthlyAttendancePage = () => {
                                           </div>
                                           {attendance.check_in_time && (
                                             <div className="text-gray-600 text-center mt-1 text-xs">
-                                              {new Date(attendance.check_in_time).toLocaleTimeString('id-ID', {
-                                                hour: '2-digit',
-                                                minute: '2-digit'
-                                              })}
+                                              {formatTimeWITA(attendance.check_in_time)}
                                             </div>
                                           )}
                                         </>

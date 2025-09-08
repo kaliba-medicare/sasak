@@ -85,12 +85,13 @@ const TodayAttendancePage = () => {
     }
     
     try {
+      console.log('=== DEBUGGING ATTENDANCE FETCH ===');
       console.log('Fetching attendance for date:', selectedDate);
       console.log('Current WITA date:', getTodayDateWITA());
-      console.log('Current UTC date:', new Date().toISOString().split('T')[0]);
+      console.log('selectedDate === WITA date?', selectedDate === getTodayDateWITA());
       
       // First, get attendance data for selected date
-      const { data: attendanceData, error: attendanceError } = await supabase
+      let { data: attendanceData, error: attendanceError } = await supabase
         .from('attendance')
         .select(`
           id,
@@ -104,6 +105,17 @@ const TodayAttendancePage = () => {
         `)
         .eq('date', selectedDate)
         .order('check_in_time', { ascending: false });
+
+      console.log('Query executed with date filter:', selectedDate);
+      console.log('Query result count:', attendanceData?.length || 0);
+      
+      // Debug: Check what dates exist in the database
+      const { data: allDates } = await supabase
+        .from('attendance')
+        .select('date')
+        .order('date', { ascending: false })
+        .limit(10);
+      console.log('Available dates in database:', allDates?.map(d => d.date) || []);
 
       if (attendanceError) {
         console.error('Attendance query error:', attendanceError);
@@ -268,6 +280,11 @@ const TodayAttendancePage = () => {
         </div>
         <p className="text-sm text-muted-foreground">
           Daftar pegawai yang telah melakukan absensi pada tanggal {formatDateWITA(selectedDate)}
+          {selectedDate !== getTodayDateWITA() && (
+            <span className="ml-2 text-blue-600 font-medium">
+              (Menampilkan data terbaru yang tersedia)
+            </span>
+          )}
         </p>
       </div>
 

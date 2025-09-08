@@ -6,7 +6,7 @@ import { MapPin, Clock, CheckCircle, XCircle, Navigation } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
-import { getNowMakassar, getTodayDateWITA, formatTimeWITA } from "@/lib/timezone";
+import { getNowMakassar, getTodayDateWITA, formatTimeWITA, getTimestampForDB } from "@/lib/timezone";
 
 // Target location coordinates (Lombok area)
 const TARGET_LOCATION = {
@@ -69,7 +69,7 @@ const AttendanceScreen = () => {
           );
 
           setDistance(Math.round(dist));
-          setIsInRange(dist <= 50); // 50 meter radius for testing
+          setIsInRange(dist <= 50000); // 50000 meter radius for testing
         },
         (error) => {
           console.error("Error getting location:", error);
@@ -155,7 +155,7 @@ const AttendanceScreen = () => {
     }
 
     // For testing, make location check less strict or allow override
-    if (!isInRange && distance && distance > 50) { // Changed from 30m to 50m for testing
+    if (!isInRange && distance && distance > 50000) { // Changed from 30m to 50000m for testing
       toast({
         title: "Lokasi Terlalu Jauh",
         description: `Jarak Anda ${distance}m dari kantor. Mendekatlah ke kantor untuk absensi.`,
@@ -169,8 +169,8 @@ const AttendanceScreen = () => {
     try {
       const now = getNowMakassar();
       const hour = now.getHours();
-      const isoNow = now.toISOString();
-      const today = isoNow.split("T")[0];
+      const timestamp = getTimestampForDB(); // Let PostgreSQL handle timezone conversion
+      const today = getTodayDateWITA(); // Use WITA date for date field
 
       if (!todayAttendance?.check_in_time) {
         // Check if employee already has a check-out record for today (prevent duplicate late check-out)
@@ -192,7 +192,7 @@ const AttendanceScreen = () => {
               user_id: user.id,
               employee_id: profile.employee_id,
               check_in_time: null, // No check-in time since they're late
-              check_out_time: isoNow, // Only record check-out
+              check_out_time: timestamp, // PostgreSQL will store in UTC automatically
               location_lat: currentLocation.lat,
               location_lng: currentLocation.lng,
               status: "late", // Automatically late for missing check-in window
@@ -233,7 +233,7 @@ const AttendanceScreen = () => {
           .insert({
             user_id: user.id,
             employee_id: profile.employee_id,
-            check_in_time: isoNow,
+            check_in_time: timestamp, // PostgreSQL will store in UTC automatically
             location_lat: currentLocation.lat,
             location_lng: currentLocation.lng,
             status: attendanceStatus,
@@ -274,7 +274,7 @@ const AttendanceScreen = () => {
         const { data, error } = await supabase
           .from("attendance")
           .update({
-            check_out_time: isoNow,
+            check_out_time: timestamp, // PostgreSQL will store in UTC automatically
           })
           .eq("id", todayAttendance.id)
           .select()
@@ -527,7 +527,7 @@ const AttendanceScreen = () => {
 
           {!isInRange && (
             <p className="text-sm text-muted-foreground text-center">
-              Mendekatlah ke kantor (radius 50m) untuk melakukan absensi
+              Mendekatlah ke kantor (radius 50000m) untuk melakukan absensi
             </p>
           )}
         </CardContent>

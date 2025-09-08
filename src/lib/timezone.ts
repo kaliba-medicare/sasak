@@ -1,6 +1,17 @@
 // Utility functions for handling Asia/Makassar timezone (WITA)
 
 /**
+ * Get current timestamp in proper format for database storage
+ * PostgreSQL TIMESTAMPTZ automatically converts to UTC - this is correct behavior
+ * @returns ISO string that PostgreSQL will store as UTC
+ */
+export const getTimestampForDB = (): string => {
+  // Simply return current time as ISO string
+  // PostgreSQL TIMESTAMPTZ will handle timezone conversion automatically
+  return new Date().toISOString();
+};
+
+/**
  * Get current date and time in Asia/Makassar timezone (WITA)
  * @returns Date object adjusted to WITA timezone
  */
