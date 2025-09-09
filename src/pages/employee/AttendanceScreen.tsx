@@ -172,7 +172,20 @@ const AttendanceScreen = () => {
       const timestamp = getTimestampForDB(); // Let PostgreSQL handle timezone conversion
       const today = getTodayDateWITA(); // Use WITA date for date field
 
+      // Check if there's existing attendance data for today for this employee
+      const { data: existingAttendance, error: fetchError } = await supabase
+        .from("attendance")
+        .select("*")
+        .eq("user_id", user.id)
+        .eq("date", today)
+        .single();
+
+      // Log the check for debugging
+      console.log('Checking existing attendance:', { existingAttendance, fetchError });
+
       if (!todayAttendance?.check_in_time) {
+        // This is a check-in attempt
+        
         // Check if employee already has a check-out record for today (prevent duplicate late check-out)
         if (todayAttendance?.check_out_time) {
           toast({
@@ -186,24 +199,44 @@ const AttendanceScreen = () => {
         
         // Check if it's after 12:00 WITA - only allow check-out with late status
         if (hour >= 12 && hour < 19) {
-          const { data, error } = await supabase
-            .from("attendance")
-            .insert({
-              user_id: user.id,
-              employee_id: profile.employee_id,
-              check_in_time: null, // No check-in time since they're late
-              check_out_time: timestamp, // PostgreSQL will store in UTC automatically
-              location_lat: currentLocation.lat,
-              location_lng: currentLocation.lng,
-              status: "late", // Automatically late for missing check-in window
-              date: today,
-            })
-            .select()
-            .single();
+          // This is actually a late check-out, not check-in
+          if (existingAttendance && !fetchError) {
+            // Update existing record with check-out
+            const { data, error } = await supabase
+              .from("attendance")
+              .update({
+                check_out_time: timestamp,
+                location_lat: currentLocation.lat,
+                location_lng: currentLocation.lng,
+                status: "late", // Update status to late
+              })
+              .eq("id", existingAttendance.id)
+              .select()
+              .single();
 
-          if (error) throw error;
+            if (error) throw error;
+            setTodayAttendance(data);
+          } else {
+            // Insert new record with check-out only
+            const { data, error } = await supabase
+              .from("attendance")
+              .insert({
+                user_id: user.id,
+                employee_id: profile.employee_id,
+                check_in_time: null, // No check-in time since they're late
+                check_out_time: timestamp,
+                location_lat: currentLocation.lat,
+                location_lng: currentLocation.lng,
+                status: "late", // Automatically late for missing check-in window
+                date: today,
+              })
+              .select()
+              .single();
 
-          setTodayAttendance(data);
+            if (error) throw error;
+            setTodayAttendance(data);
+          }
+
           toast({
             title: "Check-out Terlambat! ⚠️",
             description: `Anda melewatkan waktu check-in. Tercatat check-out pada ${now.toLocaleTimeString("id-ID")} dengan status TERLAMBAT`,
@@ -228,23 +261,41 @@ const AttendanceScreen = () => {
         // Late if check-in after 08:00 WITA, otherwise present
         const attendanceStatus = hour >= 8 ? "late" : "present";
         
-        const { data, error } = await supabase
-          .from("attendance")
-          .insert({
-            user_id: user.id,
-            employee_id: profile.employee_id,
-            check_in_time: timestamp, // PostgreSQL will store in UTC automatically
-            location_lat: currentLocation.lat,
-            location_lng: currentLocation.lng,
-            status: attendanceStatus,
-            date: today,
-          })
-          .select()
-          .single();
+        if (existingAttendance && !fetchError) {
+          // Update existing record with check-in
+          const { data, error } = await supabase
+            .from("attendance")
+            .update({
+              check_in_time: timestamp,
+              location_lat: currentLocation.lat,
+              location_lng: currentLocation.lng,
+              status: attendanceStatus,
+            })
+            .eq("id", existingAttendance.id)
+            .select()
+            .single();
 
-        if (error) throw error;
+          if (error) throw error;
+          setTodayAttendance(data);
+        } else {
+          // Insert new record with check-in
+          const { data, error } = await supabase
+            .from("attendance")
+            .insert({
+              user_id: user.id,
+              employee_id: profile.employee_id,
+              check_in_time: timestamp,
+              location_lat: currentLocation.lat,
+              location_lng: currentLocation.lng,
+              status: attendanceStatus,
+              date: today,
+            })
+            .select()
+            .single();
 
-        setTodayAttendance(data);
+          if (error) throw error;
+          setTodayAttendance(data);
+        }
         
         // Show appropriate message based on status
         if (attendanceStatus === "late") {
@@ -260,6 +311,8 @@ const AttendanceScreen = () => {
           });
         }
       } else if (!todayAttendance?.check_out_time) {
+        // This is a check-out attempt
+        
         // 🚨 Validasi Check-out (12–19)
         if (hour < 12 || hour >= 19) {
           toast({
@@ -271,18 +324,39 @@ const AttendanceScreen = () => {
           return;
         }
 
-        const { data, error } = await supabase
-          .from("attendance")
-          .update({
-            check_out_time: timestamp, // PostgreSQL will store in UTC automatically
-          })
-          .eq("id", todayAttendance.id)
-          .select()
-          .single();
+        if (existingAttendance && !fetchError) {
+          // Update existing record with check-out
+          const { data, error } = await supabase
+            .from("attendance")
+            .update({
+              check_out_time: timestamp,
+            })
+            .eq("id", existingAttendance.id)
+            .select()
+            .single();
 
-        if (error) throw error;
+          if (error) throw error;
+          setTodayAttendance(data);
+        } else {
+          // Insert new record with check-out only
+          const { data, error } = await supabase
+            .from("attendance")
+            .insert({
+              user_id: user.id,
+              employee_id: profile.employee_id,
+              check_out_time: timestamp,
+              location_lat: currentLocation.lat,
+              location_lng: currentLocation.lng,
+              status: "present", // Default status for check-out only
+              date: today,
+            })
+            .select()
+            .single();
 
-        setTodayAttendance(data);
+          if (error) throw error;
+          setTodayAttendance(data);
+        }
+
         toast({
           title: "Check-out Berhasil! 👋",
           description: `Tercatat pada ${now.toLocaleTimeString("id-ID")}`,
@@ -297,6 +371,9 @@ const AttendanceScreen = () => {
         setIsCheckingIn(false);
         return;
       }
+      
+      // Refresh today's attendance after any update
+      await fetchTodayAttendance();
     } catch (error) {
       console.error("Error saving attendance:", error);
       toast({
