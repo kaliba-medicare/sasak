@@ -69,7 +69,7 @@ const AttendanceScreen = () => {
           );
 
           setDistance(Math.round(dist));
-          setIsInRange(dist <= 50); // 50 meter radius for testing
+          setIsInRange(dist <= 500000); // 50 meter radius for testing
         },
         (error) => {
           console.error("Error getting location:", error);
