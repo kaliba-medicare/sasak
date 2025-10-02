@@ -37,22 +37,27 @@ const MonthlyAttendancePage = () => {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [departmentFilter, setDepartmentFilter] = useState("all");
-  const [selectedMonth, setSelectedMonth] = useState(() => {
-    // Use WITA timezone for current date
+  const [selectedYear, setSelectedYear] = useState(() => {
     const today = getTodayDateWITA();
-    const [year, month] = today.split('-');
-    return `${year}-${month}`;
+    return parseInt(today.split('-')[0]);
+  });
+  const [selectedMonth, setSelectedMonth] = useState(() => {
+    const today = getTodayDateWITA();
+    return parseInt(today.split('-')[1]);
   });
   const [departments, setDepartments] = useState<string[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const { toast } = useToast();
+  
+  // Generate years for selection (current year and 5 years back)
+  const availableYears = Array.from({ length: 6 }, (_, i) => new Date().getFullYear() - i).reverse();
 
   useEffect(() => {
     console.log('Component mounted, fetching monthly attendance data...');
     fetchMonthlyAttendance();
     fetchDepartments();
-  }, [selectedMonth]);
+  }, [selectedYear, selectedMonth]);
 
   const fetchDepartments = async () => {
     try {
@@ -85,12 +90,13 @@ const MonthlyAttendancePage = () => {
     }
     
     try {
-      const [year, month] = selectedMonth.split('-');
+      const year = selectedYear;
+      const month = selectedMonth.toString().padStart(2, '0');
       const startDate = `${year}-${month}-01`;
-      const endDate = `${year}-${month}-${new Date(parseInt(year), parseInt(month), 0).getDate()}`;
+      const endDate = `${year}-${month}-${new Date(year, parseInt(month), 0).getDate()}`;
       
       console.log('=== MONTHLY ATTENDANCE DEBUG ===');
-      console.log('Selected month:', selectedMonth);
+      console.log('Selected date:', year, month);
       console.log('Date range:', startDate, 'to', endDate);
       
       // First, get all attendance data for the month with proper deduplication
@@ -193,8 +199,8 @@ const MonthlyAttendancePage = () => {
       const monthlySummary: MonthlyAttendanceRecord[] = [];
       
       // Get the total number of working days in the month (excluding weekends and holidays)
-      const totalWorkingDays = getWorkingDaysInMonth(parseInt(year), parseInt(month) - 1);
-      console.log(`Total working days for ${selectedMonth}: ${totalWorkingDays}`);
+      const totalWorkingDays = getWorkingDaysInMonth(selectedYear, selectedMonth - 1);
+      console.log(`Total working days for ${selectedYear}-${selectedMonth}: ${totalWorkingDays}`);
       
       profilesData?.forEach(profile => {
         const employeeAttendance = attendanceByEmployee.get(profile.employee_id) || [];
@@ -365,8 +371,12 @@ const MonthlyAttendancePage = () => {
     fetchMonthlyAttendance();
   };
 
+  const handleYearChange = (year: string) => {
+    setSelectedYear(parseInt(year));
+  };
+
   const handleMonthChange = (month: string) => {
-    setSelectedMonth(month);
+    setSelectedMonth(parseInt(month));
   };
 
   const toggleRowExpansion = (employeeId: string) => {
@@ -380,33 +390,112 @@ const MonthlyAttendancePage = () => {
   };
 
   const exportToExcel = () => {
-    const [year, month] = selectedMonth.split('-');
-    const monthName = new Date(parseInt(year), parseInt(month) - 1).toLocaleDateString('id-ID', { 
+    const year = selectedYear;
+    const month = selectedMonth.toString().padStart(2, '0');
+    const monthName = new Date(year, parseInt(month) - 1).toLocaleDateString('id-ID', { 
       year: 'numeric', 
       month: 'long' 
     });
     
-    const exportData = filteredAttendance.map(item => ({
-      'ID Pegawai': item.employee_id,
-      'Nama': item.name,
-      'Departemen': item.department,
-      'Total Hari Kerja': `${item.total_days} hari (tidak termasuk weekend & libur)`,
-      'Hadir (Termasuk Terlambat)': item.present_days, // This includes both on-time and late
-      'Terlambat': item.late_days,
-      'Tidak Hadir': item.absent_days,
-      'Persentase Hadir': `${item.present_percentage}%`,
-      'Persentase Terlambat': `${item.late_percentage}%`,
-      'Persentase Tidak Hadir': `${item.absent_percentage}%`
-    }));
+    // Create comprehensive export data with daily attendance details
+    const exportData: any[] = [];
+    
+    filteredAttendance.forEach(item => {
+      // Add employee summary row
+      exportData.push({
+        'ID Pegawai': item.employee_id,
+        'Nama': item.name,
+        'Departemen': item.department,
+        'Posisi': item.position || '-',
+        'Total Hari Kerja': item.total_days,
+        'Hadir (Termasuk Terlambat)': item.present_days,
+        'Terlambat': item.late_days,
+        'Tidak Hadir': item.absent_days,
+        'Persentase Hadir': `${item.present_percentage}%`,
+        'Persentase Terlambat': `${item.late_percentage}%`,
+        'Persentase Tidak Hadir': `${item.absent_percentage}%`,
+        'Tanggal': '',
+        'Status': '',
+        'Waktu Masuk': '',
+        'Waktu Keluar': ''
+      });
+      
+      // Add daily attendance details for each employee
+      // Create attendance map for quick lookup
+      const attendanceMap = new Map();
+      item.attendance_details.forEach(detail => {
+        attendanceMap.set(detail.date, detail);
+      });
+      
+      // Generate all days of the month
+      const daysInMonth = new Date(year, parseInt(month), 0).getDate();
+      for (let day = 1; day <= daysInMonth; day++) {
+        const dateString = `${year}-${month}-${String(day).padStart(2, '0')}`;
+        const date = new Date(dateString + 'T12:00:00'); // Noon to avoid timezone issues
+        const holidayInfo = isHolidayOrWeekend(dateString);
+        const attendance = attendanceMap.get(dateString);
+        
+        let status = '';
+        let checkInTime = '';
+        let checkOutTime = '';
+        
+        if (holidayInfo.isHoliday) {
+          status = holidayInfo.type === 'Minggu' || holidayInfo.type === 'Sabtu' ? 'Weekend' : 'Libur';
+        } else if (attendance) {
+          status = getStatusText(attendance.status);
+          checkInTime = attendance.check_in_time ? formatTimeWITA(attendance.check_in_time) : '-';
+          checkOutTime = attendance.check_out_time ? formatTimeWITA(attendance.check_out_time) : '-';
+        } else {
+          status = 'Tidak Hadir';
+        }
+        
+        exportData.push({
+          'ID Pegawai': '',
+          'Nama': '',
+          'Departemen': '',
+          'Posisi': '',
+          'Total Hari Kerja': '',
+          'Hadir (Termasuk Terlambat)': '',
+          'Terlambat': '',
+          'Tidak Hadir': '',
+          'Persentase Hadir': '',
+          'Persentase Terlambat': '',
+          'Persentase Tidak Hadir': '',
+          'Tanggal': dateString,
+          'Status': status,
+          'Waktu Masuk': checkInTime,
+          'Waktu Keluar': checkOutTime
+        });
+      }
+      
+      // Add empty row as separator
+      exportData.push({
+        'ID Pegawai': '',
+        'Nama': '',
+        'Departemen': '',
+        'Posisi': '',
+        'Total Hari Kerja': '',
+        'Hadir (Termasuk Terlambat)': '',
+        'Terlambat': '',
+        'Tidak Hadir': '',
+        'Persentase Hadir': '',
+        'Persentase Terlambat': '',
+        'Persentase Tidak Hadir': '',
+        'Tanggal': '',
+        'Status': '',
+        'Waktu Masuk': '',
+        'Waktu Keluar': ''
+      });
+    });
 
     const ws = XLSX.utils.json_to_sheet(exportData);
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Rekap Bulanan');
-    XLSX.writeFile(wb, `Rekap_Absensi_${monthName.replace(/\s/g, '_')}.xlsx`);
+    XLSX.utils.book_append_sheet(wb, ws, 'Rekap_Bulanan_Detail');
+    XLSX.writeFile(wb, `Rekap_Absensi_Detail_${monthName.replace(/\s/g, '_')}.xlsx`);
 
     toast({
       title: "Berhasil",
-      description: "Data rekap bulanan berhasil diekspor ke Excel",
+      description: "Data rekap bulanan lengkap berhasil diekspor ke Excel",
     });
   };
 
@@ -472,14 +561,16 @@ const MonthlyAttendancePage = () => {
             </Button>
             <Button onClick={exportToExcel} disabled={filteredAttendance.length === 0}>
               <Download className="w-4 h-4 mr-2" />
-              Export Excel
+              Export Excel (Detail)
             </Button>
           </div>
         </div>
         <p className="text-sm text-muted-foreground">
-          Rekap kehadiran pegawai untuk bulan {new Date(selectedMonth + '-01').toLocaleDateString('id-ID', { year: 'numeric', month: 'long' })} 
+          Rekap kehadiran pegawai untuk bulan {new Date(selectedYear, selectedMonth - 1).toLocaleDateString('id-ID', { year: 'numeric', month: 'long' })} 
           (tidak termasuk weekend dan hari libur nasional). <br/>
           <span className="font-medium">Catatan:</span> Kolom "Hadir" mencakup pegawai yang datang tepat waktu dan terlambat.
+          <br/>
+          <span className="font-medium">Export Excel (Detail):</span> Mengekspor data pegawai lengkap dengan riwayat absensi harian.
         </p>
       </div>
 
@@ -540,7 +631,7 @@ const MonthlyAttendancePage = () => {
           <CardTitle className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Calendar className="w-5 h-5" />
-              Rekap Bulanan - {new Date(selectedMonth + '-01').toLocaleDateString('id-ID', { year: 'numeric', month: 'long' })}
+              Rekap Bulanan - {new Date(selectedYear, selectedMonth - 1).toLocaleDateString('id-ID', { year: 'numeric', month: 'long' })}
             </div>
             <div className="text-sm text-muted-foreground">
               {filteredAttendance.length} pegawai
@@ -560,12 +651,36 @@ const MonthlyAttendancePage = () => {
               />
             </div>
             
-            <Input
-              type="month"
-              value={selectedMonth}
-              onChange={(e) => handleMonthChange(e.target.value)}
-              className="w-full sm:w-[180px]"
-            />
+            <Select value={selectedMonth.toString()} onValueChange={handleMonthChange}>
+              <SelectTrigger className="w-full sm:w-[120px]">
+                <SelectValue placeholder="Bulan" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="1">Januari</SelectItem>
+                <SelectItem value="2">Februari</SelectItem>
+                <SelectItem value="3">Maret</SelectItem>
+                <SelectItem value="4">April</SelectItem>
+                <SelectItem value="5">Mei</SelectItem>
+                <SelectItem value="6">Juni</SelectItem>
+                <SelectItem value="7">Juli</SelectItem>
+                <SelectItem value="8">Agustus</SelectItem>
+                <SelectItem value="9">September</SelectItem>
+                <SelectItem value="10">Oktober</SelectItem>
+                <SelectItem value="11">November</SelectItem>
+                <SelectItem value="12">Desember</SelectItem>
+              </SelectContent>
+            </Select>
+            
+            <Select value={selectedYear.toString()} onValueChange={handleYearChange}>
+              <SelectTrigger className="w-full sm:w-[120px]">
+                <SelectValue placeholder="Tahun" />
+              </SelectTrigger>
+              <SelectContent>
+                {availableYears.map(year => (
+                  <SelectItem key={year} value={year.toString()}>{year}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             
             <Select value={departmentFilter} onValueChange={setDepartmentFilter}>
               <SelectTrigger className="w-full sm:w-[200px]">
@@ -628,14 +743,15 @@ const MonthlyAttendancePage = () => {
                       <TableRow>
                         <TableCell colSpan={9} className="bg-gray-50 p-4">
                           <div className="space-y-2">
-                            <h4 className="font-semibold text-sm">Detail Kehadiran {item.name} - {new Date(selectedMonth + '-01').toLocaleDateString('id-ID', { year: 'numeric', month: 'long' })}</h4>
+                            <h4 className="font-semibold text-sm">Detail Kehadiran {item.name} - {new Date(selectedYear, selectedMonth - 1).toLocaleDateString('id-ID', { year: 'numeric', month: 'long' })}</h4>
                             <div className="text-xs text-gray-600 mb-2">
                               Total Hari Kerja: {item.total_days} hari (tidak termasuk weekend dan hari libur nasional)
                             </div>
                             <div className="grid grid-cols-7 gap-1 max-h-60 overflow-y-auto">
                               {(() => {
-                                const [year, month] = selectedMonth.split('-');
-                                const daysInMonth = new Date(parseInt(year), parseInt(month), 0).getDate();
+                                const year = selectedYear;
+                                const month = selectedMonth;
+                                const daysInMonth = new Date(year, month, 0).getDate();
                                 const allDays = [];
                                 
                                 // Create attendance map for quick lookup
