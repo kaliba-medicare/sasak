@@ -45,6 +45,50 @@ const isSuspiciousLocation = (position: GeolocationPosition) => {
   return false;
 };
 
+// Add function to detect developer mode
+const isDeveloperMode = () => {
+  // Check for common indicators of developer mode or debugging tools
+  try {
+    // Check if DevTools is open (this is not 100% reliable but can catch some cases)
+    const start = performance.now();
+    debugger; // This will pause execution if DevTools is open
+    const end = performance.now();
+    
+    // If the debugger paused, there will be a significant delay
+    if (end - start > 100) {
+      return true;
+    }
+    
+    // Check for presence of certain DevTools properties
+    if ((window as any).chrome && (window as any).chrome.runtime) {
+      // Chrome extension APIs available
+      return true;
+    }
+    
+    // Check for React DevTools
+    if ((window as any).__REACT_DEVTOOLS_GLOBAL_HOOK__) {
+      return true;
+    }
+    
+    // Check for other common developer tools
+    if ((window as any).__REDUX_DEVTOOLS_EXTENSION__) {
+      return true;
+    }
+    
+    // Check for mobile device - absence might indicate desktop/developer environment
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    if (!isMobile) {
+      // Desktop browsers are more likely to be in developer mode
+      return true;
+    }
+    
+    return false;
+  } catch (e) {
+    // If any check fails, assume normal mode
+    return false;
+  }
+};
+
 const AttendanceScreen = () => {
   const [currentLocation, setCurrentLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [distance, setDistance] = useState<number | null>(null);
@@ -216,6 +260,16 @@ const AttendanceScreen = () => {
   // ✅ Handle Check-in / Check-out with enhanced security
   const handleCheckIn = async () => {
     console.log("handleCheckIn called", { user, profile, currentLocation, isInRange });
+    
+    // Check for developer mode first
+    if (isDeveloperMode()) {
+      toast({
+        title: "Akses Ditolak",
+        description: "Aplikasi tidak dapat digunakan dalam mode developer",
+        variant: "destructive",
+      });
+      return;
+    }
     
     if (!user) {
       toast({
