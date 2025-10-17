@@ -25,26 +25,6 @@ interface AttendanceRecord {
   date?: string;
 }
 
-// Add function to detect suspicious location data
-const isSuspiciousLocation = (position: GeolocationPosition) => {
-  // Check for common fake GPS patterns
-  const { latitude, longitude, accuracy } = position.coords;
-  
-  // Suspicious if accuracy is too perfect (0m) or too low
-  if (accuracy === 0 || accuracy > 1000) {
-    return true;
-  }
-  
-  // Check if coordinates are suspiciously round (common in fake GPS)
-  const latStr = latitude.toString();
-  const lngStr = longitude.toString();
-  if (latStr.split('.')[1]?.length < 3 || lngStr.split('.')[1]?.length < 3) {
-    return true;
-  }
-  
-  return false;
-};
-
 // Add function to detect developer mode
 const isDeveloperMode = () => {
   // Check for common indicators of developer mode or debugging tools
@@ -143,32 +123,6 @@ const AttendanceScreen = () => {
         // Reset error state
         setLocationError(null);
         
-        // Check for suspicious location data
-        if (isSuspiciousLocation(position)) {
-          const errorMsg = "Lokasi Anda terdeteksi tidak valid. Mohon gunakan GPS asli.";
-          console.error("Suspicious location detected:", errorMsg);
-          setLocationError(errorMsg);
-          
-          toast({
-            title: "Lokasi Mencurigakan Terdeteksi",
-            description: errorMsg,
-            variant: "destructive",
-          });
-          
-          // Log suspicious activity
-          if (user) {
-            await supabase.from("security_logs").insert({
-              user_id: user.id,
-              event_type: "suspicious_location_data",
-              description: `User ${user.id} provided suspicious location data with accuracy: ${position.coords.accuracy}`,
-              gps_location_lat: position.coords.latitude,
-              gps_location_lng: position.coords.longitude
-            });
-          }
-          
-          return;
-        }
-
         const { latitude, longitude } = position.coords;
         console.log(`Setting current location: ${latitude}, ${longitude}`);
         setCurrentLocation({ lat: latitude, lng: longitude });
@@ -305,15 +259,6 @@ const AttendanceScreen = () => {
         title: "Lokasi Terlalu Jauh",
         description: `Jarak Anda ${distance}m dari kantor. Mendekatlah ke kantor untuk absensi.`,
         variant: "destructive",
-      });
-      
-      // Log suspicious activity
-      await supabase.from("security_logs").insert({
-        user_id: user.id,
-        event_type: "location_out_of_range",
-        description: `User ${user.id} attempted attendance from ${distance}m away`,
-        gps_location_lat: currentLocation.lat,
-        gps_location_lng: currentLocation.lng
       });
       
       return;

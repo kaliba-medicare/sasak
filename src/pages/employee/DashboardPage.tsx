@@ -22,9 +22,11 @@ const DashboardPage = () => {
     if (error) {
       toast({
         title: "Logout Gagal",
-        description: error.message,
+        description: error.message || "Terjadi kesalahan saat logout",
         variant: "destructive",
       });
+      // Even if there's an error, redirect to login page to ensure user is logged out
+      navigate("/login");
     } else {
       toast({
         title: "Logout Berhasil",
