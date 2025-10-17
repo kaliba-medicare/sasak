@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import MobileContainer from "@/components/ui/mobile-container";
 import BottomNavigation from "@/components/BottomNavigation";
 import AttendanceScreen from "./AttendanceScreen";
@@ -7,7 +7,7 @@ import HistoryScreen from "./HistoryScreen";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { LogOut, Bell } from "lucide-react";
+import { LogOut, Bell, MapPin } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 
@@ -66,8 +66,11 @@ const DashboardPage = () => {
               variant="ghost"
               size="sm"
               className="text-white hover:bg-white/10"
+              asChild
             >
-              <Bell className="w-4 h-4" />
+              <Link to="/employee/location-test">
+                <MapPin className="w-4 h-4" />
+              </Link>
             </Button>
             <Button
               variant="ghost"

@@ -1,7 +1,7 @@
 import { Outlet, Link, useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { LogOut, Users, Clock, Calendar } from "lucide-react";
+import { LogOut, Users, Clock, Calendar, Shield } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import SasakLogo from "@/components/SasakLogo";
@@ -113,6 +113,19 @@ const AdminDashboardPage = () => {
               <Link to="/admin/monthly-attendance">
                 <Calendar className="w-4 h-4 mr-2" />
                 Rekap Bulanan
+              </Link>
+            </Button>
+            <Button
+              asChild
+              variant={isActive("/admin/security-logs") ? "secondary" : "ghost"}
+              className={isActive("/admin/security-logs")
+                ? "bg-primary-foreground text-primary hover:bg-primary-foreground/90"
+                : "text-primary-foreground hover:bg-primary-foreground/10"
+              }
+            >
+              <Link to="/admin/security-logs">
+                <Shield className="w-4 h-4 mr-2" />
+                Log Keamanan
               </Link>
             </Button>
           </nav>

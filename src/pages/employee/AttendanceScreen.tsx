@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { MapPin, Clock, CheckCircle, XCircle, Navigation } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase, getIPLocation } from "@/integrations/supabase/client";
 import { getNowMakassar, getTodayDateWITA, formatTimeWITA, getTimestampForDB } from "@/lib/timezone";
 
 // Target location coordinates (Lombok area)
@@ -25,7 +25,25 @@ interface AttendanceRecord {
   date?: string;
 }
 
-
+// Add function to detect suspicious location data
+const isSuspiciousLocation = (position: GeolocationPosition) => {
+  // Check for common fake GPS patterns
+  const { latitude, longitude, accuracy } = position.coords;
+  
+  // Suspicious if accuracy is too perfect (0m) or too low
+  if (accuracy === 0 || accuracy > 1000) {
+    return true;
+  }
+  
+  // Check if coordinates are suspiciously round (common in fake GPS)
+  const latStr = latitude.toString();
+  const lngStr = longitude.toString();
+  if (latStr.split('.')[1]?.length < 3 || lngStr.split('.')[1]?.length < 3) {
+    return true;
+  }
+  
+  return false;
+};
 
 const AttendanceScreen = () => {
   const [currentLocation, setCurrentLocation] = useState<{ lat: number; lng: number } | null>(null);
@@ -34,6 +52,7 @@ const AttendanceScreen = () => {
   const [isCheckingIn, setIsCheckingIn] = useState(false);
   const [todayAttendance, setTodayAttendance] = useState<AttendanceRecord | null>(null);
   const [currentTime, setCurrentTime] = useState(getNowMakassar());
+  const [locationError, setLocationError] = useState<string | null>(null);
   const { toast } = useToast();
   const { user, profile } = useAuth();
 
@@ -53,35 +72,155 @@ const AttendanceScreen = () => {
     return R * c;
   };
 
-  // Get user location
-  const getCurrentLocation = () => {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          const { latitude, longitude } = position.coords;
-          setCurrentLocation({ lat: latitude, lng: longitude });
+  // Get user location with enhanced validation
+  const getCurrentLocation = async () => {
+    // Clear previous errors
+    setLocationError(null);
+    
+    // Check if geolocation is available
+    if (!navigator.geolocation) {
+      const errorMsg = "Geolocation tidak didukung oleh browser Anda";
+      console.error(errorMsg);
+      setLocationError(errorMsg);
+      toast({
+        title: "Lokasi Tidak Ditemukan",
+        description: errorMsg,
+        variant: "destructive",
+      });
+      return;
+    }
 
-          const dist = calculateDistance(
-            latitude,
-            longitude,
-            TARGET_LOCATION.lat,
-            TARGET_LOCATION.lng
-          );
-
-          setDistance(Math.round(dist));
-          setIsInRange(dist <= 50); // 50 meter radius for testing
-        },
-        (error) => {
-          console.error("Error getting location:", error);
+    console.log("Attempting to get current location...");
+    
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        console.log("Location obtained:", position);
+        
+        // Reset error state
+        setLocationError(null);
+        
+        // Check for suspicious location data
+        if (isSuspiciousLocation(position)) {
+          const errorMsg = "Lokasi Anda terdeteksi tidak valid. Mohon gunakan GPS asli.";
+          console.error("Suspicious location detected:", errorMsg);
+          setLocationError(errorMsg);
+          
           toast({
-            title: "Lokasi Tidak Ditemukan",
-            description: "Mohon aktifkan GPS dan berikan izin lokasi",
+            title: "Lokasi Mencurigakan Terdeteksi",
+            description: errorMsg,
             variant: "destructive",
           });
-        },
-        { enableHighAccuracy: true }
-      );
-    }
+          
+          // Log suspicious activity
+          if (user) {
+            await supabase.from("security_logs").insert({
+              user_id: user.id,
+              event_type: "suspicious_location_data",
+              description: `User ${user.id} provided suspicious location data with accuracy: ${position.coords.accuracy}`,
+              gps_location_lat: position.coords.latitude,
+              gps_location_lng: position.coords.longitude
+            });
+          }
+          
+          return;
+        }
+
+        const { latitude, longitude } = position.coords;
+        console.log(`Setting current location: ${latitude}, ${longitude}`);
+        setCurrentLocation({ lat: latitude, lng: longitude });
+
+        // Get IP location for cross-validation
+        try {
+          const ipLocation = await getIPLocation();
+          console.log("IP location:", ipLocation);
+          
+          if (ipLocation) {
+            // Calculate distance between GPS location and IP-based location
+            const ipDistance = calculateDistance(
+              latitude,
+              longitude,
+              ipLocation.latitude,
+              ipLocation.longitude
+            );
+            console.log(`Distance between GPS and IP location: ${ipDistance}m`);
+            
+            // If distance is too large (>500km), likely fake GPS
+            if (ipDistance > 500000) { // 500km in meters
+              const errorMsg = "Lokasi GPS tidak sesuai dengan lokasi jaringan. Absensi ditolak.";
+              console.error("Location/IP mismatch detected:", errorMsg);
+              setLocationError(errorMsg);
+              
+              toast({
+                title: "Peringatan Keamanan",
+                description: errorMsg,
+                variant: "destructive",
+              });
+              
+              // Log suspicious activity
+              if (user) {
+                await supabase.from("security_logs").insert({
+                  user_id: user.id,
+                  event_type: "location_ip_mismatch",
+                  description: `GPS and IP location mismatch. Distance: ${ipDistance}m`,
+                  ip_address: ipLocation.ip,
+                  gps_location_lat: latitude,
+                  gps_location_lng: longitude,
+                  ip_location_lat: ipLocation.latitude,
+                  ip_location_lng: ipLocation.longitude
+                });
+              }
+              
+              return;
+            }
+          }
+        } catch (ipError) {
+          console.warn("Failed to get IP location, continuing with GPS only:", ipError);
+        }
+
+        const dist = calculateDistance(
+          latitude,
+          longitude,
+          TARGET_LOCATION.lat,
+          TARGET_LOCATION.lng
+        );
+        console.log(`Distance from office: ${dist}m`);
+
+        setDistance(Math.round(dist));
+        setIsInRange(dist <= 50); // 50 meter radius for testing
+        console.log(`Is in range: ${dist <= 50}`);
+      },
+      (error) => {
+        console.error("Error getting location:", error);
+        let errorMsg = "";
+        
+        switch (error.code) {
+          case error.PERMISSION_DENIED:
+            errorMsg = "Izin lokasi ditolak. Mohon aktifkan izin lokasi di pengaturan browser Anda. Klik ikon kunci di address bar browser untuk mengatur izin lokasi.";
+            break;
+          case error.POSITION_UNAVAILABLE:
+            errorMsg = "Informasi lokasi tidak tersedia. Pastikan GPS Anda aktif dan memiliki sinyal yang baik.";
+            break;
+          case error.TIMEOUT:
+            errorMsg = "Permintaan lokasi timeout. Coba lagi atau periksa koneksi internet Anda.";
+            break;
+          default:
+            errorMsg = `Error tidak dikenal saat mendapatkan lokasi: ${error.message}`;
+            break;
+        }
+        
+        setLocationError(errorMsg);
+        toast({
+          title: "Lokasi Tidak Ditemukan",
+          description: errorMsg,
+          variant: "destructive",
+        });
+      },
+      { 
+        enableHighAccuracy: true,
+        timeout: 15000, // Increased timeout to 15 seconds
+        maximumAge: 60000
+      }
+    );
   };
 
   // Fetch today's attendance
@@ -122,7 +261,7 @@ const AttendanceScreen = () => {
     };
   }, [user]);
 
-  // ✅ Handle Check-in / Check-out
+  // ✅ Handle Check-in / Check-out with enhanced security
   const handleCheckIn = async () => {
     console.log("handleCheckIn called", { user, profile, currentLocation, isInRange });
     
@@ -161,6 +300,16 @@ const AttendanceScreen = () => {
         description: `Jarak Anda ${distance}m dari kantor. Mendekatlah ke kantor untuk absensi.`,
         variant: "destructive",
       });
+      
+      // Log suspicious activity
+      await supabase.from("security_logs").insert({
+        user_id: user.id,
+        event_type: "location_out_of_range",
+        description: `User ${user.id} attempted attendance from ${distance}m away`,
+        gps_location_lat: currentLocation.lat,
+        gps_location_lng: currentLocation.lng
+      });
+      
       return;
     }
 
@@ -172,6 +321,9 @@ const AttendanceScreen = () => {
       const timestamp = getTimestampForDB(); // Let PostgreSQL handle timezone conversion
       const today = getTodayDateWITA(); // Use WITA date for date field
 
+      // Get IP location for additional validation
+      const ipLocation = await getIPLocation();
+      
       // Check if there's existing attendance data for today for this employee
       const { data: existingAttendance, error: fetchError } = await supabase
         .from("attendance")
@@ -453,6 +605,12 @@ const AttendanceScreen = () => {
             <Navigation className="w-4 h-4 mr-2" />
             Perbarui Lokasi
           </Button>
+          
+          {locationError && (
+            <div className="text-sm text-destructive mt-2 text-center">
+              Error: {locationError}
+            </div>
+          )}
         </CardContent>
       </Card>
 

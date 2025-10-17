@@ -115,6 +115,53 @@ export type Database = {
           }
         ]
       }
+      security_logs: {
+        Row: {
+          created_at: string
+          description: string | null
+          event_type: string
+          gps_location_lat: number | null
+          gps_location_lng: number | null
+          id: string
+          ip_address: string | null
+          ip_location_lat: number | null
+          ip_location_lng: number | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          event_type: string
+          gps_location_lat?: number | null
+          gps_location_lng?: number | null
+          id?: string
+          ip_address?: string | null
+          ip_location_lat?: number | null
+          ip_location_lng?: number | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          event_type?: string
+          gps_location_lat?: number | null
+          gps_location_lng?: number | null
+          id?: string
+          ip_address?: string | null
+          ip_location_lat?: number | null
+          ip_location_lng?: number | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "security_logs_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
     }
     Views: {
       [_ in never]: never
