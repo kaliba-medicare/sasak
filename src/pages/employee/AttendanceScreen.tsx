@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { MapPin, Clock, CheckCircle, XCircle, Navigation } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
-import { supabase, getIPLocation } from "@/integrations/supabase/client";
+import { supabase } from "@/integrations/supabase/client";
 import { getNowMakassar, getTodayDateWITA, formatTimeWITA, getTimestampForDB } from "@/lib/timezone";
 
 // Target location coordinates (Lombok area)
@@ -128,54 +128,6 @@ const AttendanceScreen = () => {
         const { latitude, longitude } = position.coords;
         console.log(`Setting current location: ${latitude}, ${longitude}`);
         setCurrentLocation({ lat: latitude, lng: longitude });
-
-        // Get IP location for cross-validation
-        try {
-          const ipLocation = await getIPLocation();
-          console.log("IP location:", ipLocation);
-          
-          if (ipLocation && ipLocation.latitude && ipLocation.longitude) {
-            // Calculate distance between GPS location and IP-based location
-            const ipDistance = calculateDistance(
-              latitude,
-              longitude,
-              ipLocation.latitude,
-              ipLocation.longitude
-            );
-            console.log(`Distance between GPS and IP location: ${ipDistance}m`);
-            
-            // If distance is too large (>500km), likely fake GPS
-            if (ipDistance > 500000) { // 500km in meters
-              const errorMsg = `Lokasi GPS tidak sesuai dengan lokasi jaringan (jarak: ${Math.round(ipDistance/1000)}km). Ini bisa terjadi karena: 1) Anda menggunakan VPN, 2) Jaringan seluler menggunakan tower yang jauh, 3) Masalah dengan provider internet, atau 4) Penggunaan fake GPS.`;
-              console.error("Location/IP mismatch detected:", errorMsg);
-              setLocationError(errorMsg);
-              
-              toast({
-                title: "Peringatan Keamanan",
-                description: "Lokasi GPS tidak sesuai dengan lokasi jaringan. Silakan periksa koneksi Anda atau coba lagi nanti.",
-                variant: "destructive",
-              });
-              
-              // Log suspicious activity
-              if (user) {
-                await supabase.from("security_logs").insert({
-                  user_id: user.id,
-                  event_type: "location_ip_mismatch",
-                  description: `GPS and IP location mismatch. Distance: ${ipDistance}m`,
-                  ip_address: ipLocation.ip,
-                  gps_location_lat: latitude,
-                  gps_location_lng: longitude,
-                  ip_location_lat: ipLocation.latitude,
-                  ip_location_lng: ipLocation.longitude
-                });
-              }
-              
-              return;
-            }
-          }
-        } catch (ipError) {
-          console.warn("Failed to get IP location, continuing with GPS only:", ipError);
-        }
 
         const dist = calculateDistance(
           latitude,
@@ -321,9 +273,6 @@ const AttendanceScreen = () => {
       const timestamp = getTimestampForDB(); // Let PostgreSQL handle timezone conversion
       const today = getTodayDateWITA(); // Use WITA date for date field
 
-      // Get IP location for additional validation
-      const ipLocation = await getIPLocation();
-      
       // Check if there's existing attendance data for today for this employee
       const { data: existingAttendance, error: fetchError } = await supabase
         .from("attendance")
