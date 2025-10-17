@@ -134,7 +134,7 @@ const AttendanceScreen = () => {
           const ipLocation = await getIPLocation();
           console.log("IP location:", ipLocation);
           
-          if (ipLocation) {
+          if (ipLocation && ipLocation.latitude && ipLocation.longitude) {
             // Calculate distance between GPS location and IP-based location
             const ipDistance = calculateDistance(
               latitude,
@@ -146,13 +146,13 @@ const AttendanceScreen = () => {
             
             // If distance is too large (>500km), likely fake GPS
             if (ipDistance > 500000) { // 500km in meters
-              const errorMsg = "Lokasi GPS tidak sesuai dengan lokasi jaringan. Absensi ditolak.";
+              const errorMsg = `Lokasi GPS tidak sesuai dengan lokasi jaringan (jarak: ${Math.round(ipDistance/1000)}km). Ini bisa terjadi karena: 1) Anda menggunakan VPN, 2) Jaringan seluler menggunakan tower yang jauh, 3) Masalah dengan provider internet, atau 4) Penggunaan fake GPS.`;
               console.error("Location/IP mismatch detected:", errorMsg);
               setLocationError(errorMsg);
               
               toast({
                 title: "Peringatan Keamanan",
-                description: errorMsg,
+                description: "Lokasi GPS tidak sesuai dengan lokasi jaringan. Silakan periksa koneksi Anda atau coba lagi nanti.",
                 variant: "destructive",
               });
               

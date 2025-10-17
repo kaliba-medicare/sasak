@@ -102,8 +102,24 @@ const LocationTestPage = () => {
               </div>
             </div>
           ) : locationError ? (
-            <div className="text-destructive text-center">
-              <p>Error: {locationError}</p>
+            <div className="space-y-2">
+              <div className="text-destructive text-center">
+                <p>Error: {locationError}</p>
+              </div>
+              {locationError.includes("tidak sesuai") && (
+                <div className="bg-blue-50 border border-blue-200 rounded p-3 text-sm">
+                  <p className="font-medium text-blue-800">Catatan:</p>
+                  <p className="text-blue-700 mt-1">
+                    Perbedaan lokasi GPS dan jaringan bisa terjadi karena:
+                  </p>
+                  <ul className="list-disc pl-5 mt-1 space-y-1 text-blue-700">
+                    <li>Anda menggunakan VPN atau proxy</li>
+                    <li>Jaringan seluler menggunakan tower yang jauh</li>
+                    <li>Provider internet memiliki routing yang berbeda</li>
+                    <li>GPS membutuhkan waktu untuk mendapatkan sinyal yang akurat</li>
+                  </ul>
+                </div>
+              )}
             </div>
           ) : (
             <div className="text-muted-foreground text-center">
@@ -126,9 +142,20 @@ const LocationTestPage = () => {
           <CardTitle>Cara Mengatasi Masalah Lokasi</CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-sm text-muted-foreground">
-            Jika mengalami masalah lokasi, pastikan GPS aktif dan izin lokasi telah diberikan.
-          </p>
+          <div className="space-y-2">
+            <p className="text-sm text-muted-foreground">
+              Jika mengalami masalah lokasi, pastikan GPS aktif dan izin lokasi telah diberikan.
+            </p>
+            <div className="bg-yellow-50 border border-yellow-200 rounded p-3 text-sm">
+              <p className="font-medium text-yellow-800">Tips:</p>
+              <ul className="list-disc pl-5 mt-1 space-y-1 text-yellow-700">
+                <li>Tunggu beberapa menit di area terbuka untuk sinyal GPS yang lebih baik</li>
+                <li>Matikan VPN jika sedang menggunakannya</li>
+                <li>Restart aplikasi browser Anda</li>
+                <li>Coba saat koneksi internet lebih stabil</li>
+              </ul>
+            </div>
+          </div>
         </CardContent>
       </Card>
     </div>
