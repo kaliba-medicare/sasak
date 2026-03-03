@@ -10,6 +10,7 @@ import {
 import TodayAttendancePage from "@/pages/admin/TodayAttendancePage";
 import MonthlyAttendancePage from "@/pages/admin/MonthlyAttendancePage";
 import SecurityLogsPage from "@/pages/admin/SecurityLogsPage";
+import HolidaysPage from "@/pages/admin/HolidaysPage";
 import HistoryScreen from "@/pages/employee/HistoryScreen";
 import LocationTestPage from "@/pages/employee/LocationTestPage";
 
@@ -28,6 +29,7 @@ export const router = createBrowserRouter([
           { path: "today-attendance", element: <TodayAttendancePage /> },
           { path: "monthly-attendance", element: <MonthlyAttendancePage /> },
           { path: "security-logs", element: <SecurityLogsPage /> },
+          { path: "holidays", element: <HolidaysPage /> },
         ],
       },
       {

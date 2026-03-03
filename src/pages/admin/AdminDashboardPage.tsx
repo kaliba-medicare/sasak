@@ -130,6 +130,19 @@ const AdminDashboardPage = () => {
                 Log Keamanan
               </Link>
             </Button>
+            <Button
+              asChild
+              variant={isActive("/admin/holidays") ? "secondary" : "ghost"}
+              className={isActive("/admin/holidays")
+                ? "bg-primary-foreground text-primary hover:bg-primary-foreground/90"
+                : "text-primary-foreground hover:bg-primary-foreground/10"
+              }
+            >
+              <Link to="/admin/holidays">
+                <Calendar className="w-4 h-4 mr-2" />
+                Hari Libur
+              </Link>
+            </Button>
           </nav>
         </div>
       </header>

@@ -10,6 +10,10 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { getTodayDateWITA, formatTimeWITA, formatDateWITA } from "@/lib/timezone";
 import * as XLSX from 'xlsx';
+import html2canvas from 'html2canvas';
+import jsPDF from 'jspdf';
+import { MonthlyAttendancePdfReport } from './MonthlyAttendancePdfReport';
+import { useRef } from 'react';
 
 interface MonthlyAttendanceRecord {
   id: string;
@@ -17,6 +21,7 @@ interface MonthlyAttendanceRecord {
   name: string;
   department: string;
   position?: string;
+  nip?: string;
   total_days: number;
   present_days: number;
   late_days: number;
@@ -48,8 +53,10 @@ const MonthlyAttendancePage = () => {
   const [departments, setDepartments] = useState<string[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+  const [dynamicHolidays, setDynamicHolidays] = useState<any[]>([]);
   const { toast } = useToast();
-  
+  const pdfRef = useRef<HTMLDivElement>(null);
+
   // Generate years for selection (current year and 5 years back)
   const availableYears = Array.from({ length: 6 }, (_, i) => new Date().getFullYear() - i).reverse();
 
@@ -90,6 +97,19 @@ const MonthlyAttendancePage = () => {
     }
     
     try {
+      console.log('Fetching data for:', selectedYear, selectedMonth);
+      
+      // Fetch dynamic holidays
+      const { data: dbHolidays, error: holidaysError } = await (supabase as any)
+        .from('holidays')
+        .select('*');
+      if (holidaysError) {
+        console.error('Error fetching holidays:', holidaysError);
+        throw holidaysError;
+      }
+      const fetchedHolidays = dbHolidays || [];
+      setDynamicHolidays(fetchedHolidays);
+
       const year = selectedYear;
       const month = selectedMonth.toString().padStart(2, '0');
       const startDate = `${year}-${month}-01`;
@@ -143,7 +163,7 @@ const MonthlyAttendancePage = () => {
       // Get all profiles
       const { data: profilesData, error: profilesError } = await supabase
         .from('profiles')
-        .select('employee_id, name, department, position');
+        .select('employee_id, name, department, position, nip');
       
       if (profilesError) {
         console.error('Profiles query error:', profilesError);
@@ -160,7 +180,7 @@ const MonthlyAttendancePage = () => {
       
       // Create profiles map
       const profilesMap = new Map();
-      profilesData?.forEach(profile => {
+      (profilesData as any[])?.forEach((profile: any) => {
         profilesMap.set(profile.employee_id, profile);
       });
       
@@ -198,11 +218,20 @@ const MonthlyAttendancePage = () => {
       // Calculate monthly summary for each employee
       const monthlySummary: MonthlyAttendanceRecord[] = [];
       
-      // Get the total number of working days in the month (excluding weekends and holidays)
-      const totalWorkingDays = getWorkingDaysInMonth(selectedYear, selectedMonth - 1);
-      console.log(`Total working days for ${selectedYear}-${selectedMonth}: ${totalWorkingDays}`);
+      // Calculate working days manually using the fetched holidays
+      const daysInMonth = new Date(selectedYear, selectedMonth, 0).getDate(); // Get last day of the month
+      let totalWorkingDays = 0;
+      for (let day = 1; day <= daysInMonth; day++) {
+        const dateString = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        const holidayInfo = isHolidayOrWeekend(dateString, fetchedHolidays);
+        if (!holidayInfo.isHoliday) {
+          totalWorkingDays++;
+        }
+      }
       
-      profilesData?.forEach(profile => {
+      console.log(`Working days in ${selectedYear}-${selectedMonth}: ${totalWorkingDays}`);
+      
+      (profilesData as any[])?.forEach((profile: any) => {
         const employeeAttendance = attendanceByEmployee.get(profile.employee_id) || [];
         
         console.log(`\n=== DEBUGGING EMPLOYEE ${profile.employee_id} (${profile.name}) ===`);
@@ -261,6 +290,7 @@ const MonthlyAttendancePage = () => {
           name: profile.name || 'Unknown Employee',
           department: profile.department || 'Unknown Department',
           position: profile.position || 'Unknown Position',
+          nip: profile.nip || '-',
           total_days: totalWorkingDays,
           present_days: totalPresentDays, // This now includes both 'present' and 'late' status
           late_days: lateDays,
@@ -295,12 +325,10 @@ const MonthlyAttendancePage = () => {
     }
   };
 
-  const isHolidayOrWeekend = (dateString: string) => {
+  const isHolidayOrWeekend = (dateString: string, holidaysList: any[] = dynamicHolidays) => {
     try {
       // Use WITA timezone to determine day of week
       const date = new Date(dateString + 'T12:00:00'); // Noon to avoid timezone issues
-      const year = parseInt(dateString.split('-')[0]);
-      const holidays = getIndonesianHolidays(year);
       
       // Get day of week in WITA timezone
       const dayOfWeek = date.getDay();
@@ -310,11 +338,12 @@ const MonthlyAttendancePage = () => {
         return { isHoliday: true, type: dayOfWeek === 0 ? 'Minggu' : 'Sabtu' };
       }
       
-      // Check if it's national holiday
-      if (holidays.includes(dateString)) {
-        return { isHoliday: true, type: 'Hari Libur Nasional' };
+      // Check dynamic custom holidays
+      const customHoliday = holidaysList.find(h => h.date === dateString);
+      if (customHoliday) {
+        return { isHoliday: true, type: customHoliday.name };
       }
-      
+
       return { isHoliday: false, type: null };
     } catch (error) {
       console.error('Error checking holiday/weekend for date:', dateString, error);
@@ -322,50 +351,7 @@ const MonthlyAttendancePage = () => {
     }
   };
 
-  const getIndonesianHolidays = (year: number) => {
-    // Indonesian National Holidays (fixed dates)
-    const fixedHolidays = [
-      `${year}-01-01`, // New Year's Day
-      `${year}-08-17`, // Independence Day
-      `${year}-12-25`, // Christmas Day
-    ];
-    
-    // Add common Indonesian holidays (these may vary by year, but included common ones)
-    const commonHolidays = [
-      `${year}-03-22`, // Nyepi (varies by year, example date)
-      `${year}-05-01`, // Labor Day
-      `${year}-06-01`, // Pancasila Day
-      `${year}-12-26`, // Boxing Day (sometimes observed)
-    ];
-    
-    // Combine all holidays
-    return [...fixedHolidays, ...commonHolidays];
-  };
-
-  const getWorkingDaysInMonth = (year: number, month: number) => {
-    try {
-      const daysInMonth = new Date(year, month + 1, 0).getDate();
-      const holidays = getIndonesianHolidays(year);
-      let workingDays = 0;
-      
-      for (let day = 1; day <= daysInMonth; day++) {
-        // Create date string in YYYY-MM-DD format
-        const dateString = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-        const holidayInfo = isHolidayOrWeekend(dateString);
-        
-        // Count as working day if not holiday/weekend
-        if (!holidayInfo.isHoliday) {
-          workingDays++;
-        }
-      }
-      
-      console.log(`Working days in ${year}-${month + 1}: ${workingDays} (excluding weekends and holidays)`);
-      return workingDays;
-    } catch (error) {
-      console.error('Error calculating working days:', error);
-      return 22; // Default fallback
-    }
-  };
+  // Remove old getIndonesianHolidays and getWorkingDaysInMonth here since we use dynamic db query.
 
   const handleRefresh = () => {
     fetchMonthlyAttendance();
@@ -404,9 +390,10 @@ const MonthlyAttendancePage = () => {
       // Add employee summary row
       exportData.push({
         'ID Pegawai': item.employee_id,
+        'NIP': item.nip || '-',
         'Nama': item.name,
-        'Departemen': item.department,
-        'Posisi': item.position || '-',
+        'Bidang': item.department,
+        'Jabatan': item.position || '-',
         'Total Hari Kerja': item.total_days,
         'Hadir (Termasuk Terlambat)': item.present_days,
         'Terlambat': item.late_days,
@@ -451,9 +438,10 @@ const MonthlyAttendancePage = () => {
         
         exportData.push({
           'ID Pegawai': '',
+          'NIP': '',
           'Nama': '',
-          'Departemen': '',
-          'Posisi': '',
+          'Bidang': '',
+          'Jabatan': '',
           'Total Hari Kerja': '',
           'Hadir (Termasuk Terlambat)': '',
           'Terlambat': '',
@@ -471,9 +459,10 @@ const MonthlyAttendancePage = () => {
       // Add empty row as separator
       exportData.push({
         'ID Pegawai': '',
+        'NIP': '',
         'Nama': '',
-        'Departemen': '',
-        'Posisi': '',
+        'Bidang': '',
+        'Jabatan': '',
         'Total Hari Kerja': '',
         'Hadir (Termasuk Terlambat)': '',
         'Terlambat': '',
@@ -497,6 +486,65 @@ const MonthlyAttendancePage = () => {
       title: "Berhasil",
       description: "Data rekap bulanan lengkap berhasil diekspor ke Excel",
     });
+  };
+
+  const exportToPdf = async () => {
+    if (!pdfRef.current) return;
+    try {
+      setLoading(true);
+      const canvas = await html2canvas(pdfRef.current, {
+        scale: 2,
+        useCORS: true,
+        logging: false
+      });
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new jsPDF('l', 'mm', 'a4'); // 'l' for landscape
+      
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const imgHeight = (canvas.height * pdfWidth) / canvas.width;
+      
+      let heightLeft = imgHeight;
+      let position = 0;
+      const topMargin = 15; // 15mm margin atas untuk halaman kedua dan seterusnya
+      
+      // Page 1
+      pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, imgHeight);
+      heightLeft -= pageHeight;
+      
+      // Subsequent Pages
+      while (heightLeft > 0) {
+        position = position - pageHeight + topMargin; 
+        pdf.addPage();
+        pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, imgHeight);
+        
+        // Menutup bocoran potongan gambar di bagian atas dokumen dengan balok putih
+        pdf.setFillColor(255, 255, 255);
+        pdf.rect(0, 0, pdfWidth, topMargin, 'F');
+        
+        heightLeft -= (pageHeight - topMargin);
+      }
+      
+      const monthName = new Date(selectedYear, selectedMonth - 1).toLocaleDateString('id-ID', { 
+        year: 'numeric', 
+        month: 'long' 
+      });
+      pdf.save(`Rekap_Absensi_${monthName.replace(/\s/g, '_')}.pdf`);
+      
+      toast({
+        title: "Berhasil",
+        description: "Data rekap berhasil diekspor ke PDF",
+      });
+    } catch (err) {
+      console.error(err);
+      toast({
+        title: "Gagal",
+        description: "Gagal saat membuat dokumen PDF.",
+        variant: "destructive"
+      });
+    } finally {
+      setLoading(false);
+    }
   };
 
   const getStatusBadgeVariant = (status: string) => {
@@ -558,6 +606,10 @@ const MonthlyAttendancePage = () => {
             <Button variant="outline" onClick={handleRefresh} disabled={refreshing}>
               <RefreshCw className={`w-4 h-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
               Refresh
+            </Button>
+            <Button onClick={exportToPdf} disabled={filteredAttendance.length === 0} variant="secondary">
+              <Download className="w-4 h-4 mr-2" />
+              Export PDF
             </Button>
             <Button onClick={exportToExcel} disabled={filteredAttendance.length === 0}>
               <Download className="w-4 h-4 mr-2" />
@@ -684,10 +736,10 @@ const MonthlyAttendancePage = () => {
             
             <Select value={departmentFilter} onValueChange={setDepartmentFilter}>
               <SelectTrigger className="w-full sm:w-[200px]">
-                <SelectValue placeholder="Filter Departemen" />
+                <SelectValue placeholder="Filter Bidang" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">Semua Departemen</SelectItem>
+                <SelectItem value="all">Semua Bidang</SelectItem>
                 {departments.map(dept => (
                   <SelectItem key={dept} value={dept}>{dept}</SelectItem>
                 ))}
@@ -702,7 +754,7 @@ const MonthlyAttendancePage = () => {
                 <TableRow>
                   <TableHead>ID Pegawai</TableHead>
                   <TableHead>Nama</TableHead>
-                  <TableHead>Departemen</TableHead>
+                  <TableHead>Bidang</TableHead>
                   <TableHead className="text-center">Total Hari</TableHead>
                   <TableHead className="text-center">Hadir*</TableHead>
                   <TableHead className="text-center">Terlambat</TableHead>
@@ -847,6 +899,15 @@ const MonthlyAttendancePage = () => {
           </div>
         </CardContent>
       </Card>
+      
+      {/* Hidden PDF template */}
+      <MonthlyAttendancePdfReport 
+        ref={pdfRef} 
+        monthYear={new Date(selectedYear, selectedMonth - 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+        totalWorkingDays={filteredAttendance.length > 0 ? filteredAttendance[0].total_days : 0}
+        totalHours={filteredAttendance.length > 0 ? (filteredAttendance[0].total_days * 7.5) : 0}
+        data={filteredAttendance}
+      />
     </div>
   );
 };

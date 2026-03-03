@@ -23,6 +23,7 @@ const HistoryScreen = () => {
   const [loading, setLoading] = useState(true);
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1); // 1-12
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const [dynamicHolidays, setDynamicHolidays] = useState<any[]>([]);
   const { user } = useAuth();
 
   // Generate month options
@@ -61,6 +62,13 @@ const HistoryScreen = () => {
       const startDate = new Date(selectedYear, selectedMonth - 1, 1);
       const endDate = new Date(selectedYear, selectedMonth, 0); // Last day of the month
       
+      // Fetch dynamic holidays
+      const { data: dbHolidays } = await (supabase as any)
+        .from('holidays')
+        .select('*');
+      const fetchedHolidays = dbHolidays || [];
+      setDynamicHolidays(fetchedHolidays);
+
       const { data, error } = await supabase
         .from('attendance')
         .select('*')
@@ -135,11 +143,21 @@ const HistoryScreen = () => {
   // Total attendance (present + late)
   const totalAttendance = stats.totalPresent + stats.totalLate;
 
-  // Check if a date is a weekend (Saturday or Sunday)
-  const isWeekend = (dateString: string) => {
-    const date = new Date(dateString);
+  // Check if a date is a holiday or weekend (Saturday or Sunday)
+  const isHolidayOrWeekend = (dateString: string, holidaysList: any[] = dynamicHolidays) => {
+    const date = new Date(dateString + 'T12:00:00'); // Noon to avoid timezone issues
     const day = date.getDay(); // 0 = Sunday, 6 = Saturday
-    return day === 0 || day === 6;
+    
+    if (day === 0 || day === 6) {
+      return { isHoliday: true, type: day === 0 ? 'Minggu' : 'Sabtu' };
+    }
+    
+    const customHoliday = holidaysList.find(h => h.date === dateString);
+    if (customHoliday) {
+      return { isHoliday: true, type: customHoliday.name };
+    }
+    
+    return { isHoliday: false, type: null };
   };
 
   // Calculate total working days (Monday-Friday) that have passed so far in the selected month
@@ -168,11 +186,18 @@ const HistoryScreen = () => {
     
     // Iterate through each day from the first day to the end date
     while (currentDate <= endDate) {
-      // Check if it's a weekday (Monday-Friday)
-      const dayOfWeek = currentDate.getDay();
-      if (dayOfWeek !== 0 && dayOfWeek !== 6) { // 0 = Sunday, 6 = Saturday
+      // Create date string in YYYY-MM-DD format
+      const currYear = currentDate.getFullYear();
+      const currMonth = String(currentDate.getMonth() + 1).padStart(2, '0');
+      const currDay = String(currentDate.getDate()).padStart(2, '0');
+      const dateString = `${currYear}-${currMonth}-${currDay}`;
+      
+      const holidayInfo = isHolidayOrWeekend(dateString, dynamicHolidays);
+      
+      if (!holidayInfo.isHoliday) {
         workingDays++;
       }
+      
       // Move to the next day
       currentDate.setDate(currentDate.getDate() + 1);
     }
@@ -347,15 +372,15 @@ const HistoryScreen = () => {
             attendanceHistory.map((record) => (
               <div
                 key={record.id}
-                className={`flex items-center justify-between p-3 rounded-lg border border-border hover:bg-muted/30 transition-colors ${isWeekend(record.date) ? 'bg-muted/50' : ''}`}
+                className={`flex items-center justify-between p-3 rounded-lg border border-border hover:bg-muted/30 transition-colors ${isHolidayOrWeekend(record.date).isHoliday ? 'bg-muted/50' : ''}`}
               >
                 <div className="flex items-center gap-3">
                   <div className="text-center">
                     <div className="text-sm font-medium">
                       {formatDate(record.date)}
                     </div>
-                    {isWeekend(record.date) && (
-                      <div className="text-xs text-destructive font-medium">Libur</div>
+                    {isHolidayOrWeekend(record.date).isHoliday && (
+                      <div className="text-xs text-destructive font-medium">{isHolidayOrWeekend(record.date).type}</div>
                     )}
                   </div>
                   <div className="flex-1">

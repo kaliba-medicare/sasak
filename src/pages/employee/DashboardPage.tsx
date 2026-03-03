@@ -90,11 +90,11 @@ const DashboardPage = () => {
           <CardContent className="p-4">
             <div className="grid grid-cols-2 gap-4 text-white">
               <div>
-                <p className="text-white/70 text-sm">Posisi</p>
+                <p className="text-white/70 text-sm">Jabatan</p>
                 <p className="font-medium">{profile.position}</p>
               </div>
               <div>
-                <p className="text-white/70 text-sm">Departemen</p>
+                <p className="text-white/70 text-sm">Bidang</p>
                 <p className="font-medium">{profile.department}</p>
               </div>
             </div>

@@ -197,7 +197,7 @@ const TodayAttendancePage = () => {
     const exportData = filteredAttendance.map(item => ({
       'ID Pegawai': item.employee_id,
       'Nama': item.name,
-      'Departemen': item.department,
+      'Bidang': item.department,
       'Status': getStatusText(item.status),
       'Waktu Masuk': item.check_in_time ? formatTimeWITA(item.check_in_time) : '-',
       'Waktu Keluar': item.check_out_time ? formatTimeWITA(item.check_out_time) : '-'
@@ -374,10 +374,10 @@ const TodayAttendancePage = () => {
             
             <Select value={departmentFilter} onValueChange={setDepartmentFilter}>
               <SelectTrigger className="w-full sm:w-[200px]">
-                <SelectValue placeholder="Filter Departemen" />
+                <SelectValue placeholder="Filter Bidang" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">Semua Departemen</SelectItem>
+                <SelectItem value="all">Semua Bidang</SelectItem>
                 {departments.map(dept => (
                   <SelectItem key={dept} value={dept}>{dept}</SelectItem>
                 ))}
@@ -402,9 +402,9 @@ const TodayAttendancePage = () => {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>ID Pegawai</TableHead>
+                  <TableHead>Employee ID</TableHead>
                   <TableHead>Nama</TableHead>
-                  <TableHead>Departemen</TableHead>
+                  <TableHead>Bidang</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Waktu Masuk</TableHead>
                   <TableHead>Waktu Keluar</TableHead>
