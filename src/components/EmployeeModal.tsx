@@ -189,7 +189,7 @@ const EmployeeModal = ({ employee, onSuccess, children }: EmployeeModalProps) =>
                 <SelectValue placeholder="Pilih Bidang" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="Bidang Sekretariat">Bidang Sekretariat</SelectItem>
+                <SelectItem value="Sekretariat">Sekretariat</SelectItem>
                 <SelectItem value="Bidang Pelayanan Elektronik Government">Bidang Pelayanan Elektronik Government</SelectItem>
                 <SelectItem value="Bidang Pengelolaan Informasi dan Komunikasi Publik">Bidang Pengelolaan Informasi dan Komunikasi Publik</SelectItem>
                 <SelectItem value="Bidang Persandian dan Statistik">Bidang Persandian dan Statistik</SelectItem>
