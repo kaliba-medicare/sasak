@@ -160,10 +160,11 @@ const MonthlyAttendancePage = () => {
         console.warn('Duplicate records:', duplicateRecords);
       }
       
-      // Get all profiles
+      // Get all profiles, excluding admins
       const { data: profilesData, error: profilesError } = await supabase
         .from('profiles')
-        .select('employee_id, name, department, position, nip');
+        .select('employee_id, name, department, position, nip, role')
+        .neq('role', 'admin');
       
       if (profilesError) {
         console.error('Profiles query error:', profilesError);
@@ -492,37 +493,72 @@ const MonthlyAttendancePage = () => {
     if (!pdfRef.current) return;
     try {
       setLoading(true);
-      const canvas = await html2canvas(pdfRef.current, {
-        scale: 2,
-        useCORS: true,
-        logging: false
-      });
-      const imgData = canvas.toDataURL('image/png');
-      const pdf = new jsPDF('l', 'mm', 'a4'); // 'l' for landscape
       
+      const pdf = new jsPDF('l', 'mm', 'a4'); // 'l' for landscape
       const pdfWidth = pdf.internal.pageSize.getWidth();
       const pageHeight = pdf.internal.pageSize.getHeight();
-      const imgHeight = (canvas.height * pdfWidth) / canvas.width;
       
-      let heightLeft = imgHeight;
-      let position = 0;
-      const topMargin = 15; // 15mm margin atas untuk halaman kedua dan seterusnya
+      const sections = pdfRef.current.querySelectorAll('.print-container');
       
-      // Page 1
-      pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, imgHeight);
-      heightLeft -= pageHeight;
+      if (sections.length === 0) {
+        toast({
+          title: "Peringatan",
+          description: "Tidak ada data untuk diekspor",
+          variant: "destructive"
+        });
+        return;
+      }
       
-      // Subsequent Pages
-      while (heightLeft > 0) {
-        position = position - pageHeight + topMargin; 
-        pdf.addPage();
+      for (let i = 0; i < sections.length; i++) {
+        const section = sections[i] as HTMLElement;
+        
+        // Clone the section and append to body to ensure it's rendered properly before capture
+        const clone = section.cloneNode(true) as HTMLElement;
+        clone.style.position = 'fixed';
+        clone.style.left = '-9999px';
+        clone.style.top = '0';
+        clone.style.width = '297mm';
+        clone.style.backgroundColor = 'white';
+        clone.style.opacity = '1';
+        clone.style.display = 'block';
+        document.body.appendChild(clone);
+        
+        const canvas = await html2canvas(clone, {
+          scale: 2,
+          useCORS: true,
+          logging: false
+        });
+        
+        // Remove clone after capture
+        document.body.removeChild(clone);
+        
+        const imgData = canvas.toDataURL('image/png');
+        const imgHeight = (canvas.height * pdfWidth) / canvas.width;
+        
+        if (i > 0) {
+          pdf.addPage();
+        }
+        
+        let heightLeft = imgHeight;
+        let position = 0;
+        const topMargin = 15; // 15mm margin atas untuk halaman kedua dan seterusnya
+        
+        // Page 1 for this section
         pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, imgHeight);
+        heightLeft -= pageHeight;
         
-        // Menutup bocoran potongan gambar di bagian atas dokumen dengan balok putih
-        pdf.setFillColor(255, 255, 255);
-        pdf.rect(0, 0, pdfWidth, topMargin, 'F');
-        
-        heightLeft -= (pageHeight - topMargin);
+        // Subsequent Pages for this section
+        while (heightLeft > 0) {
+          position = position - pageHeight + topMargin; 
+          pdf.addPage();
+          pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, imgHeight);
+          
+          // Menutup bocoran potongan gambar di bagian atas dokumen dengan balok putih
+          pdf.setFillColor(255, 255, 255);
+          pdf.rect(0, 0, pdfWidth, topMargin, 'F');
+          
+          heightLeft -= (pageHeight - topMargin);
+        }
       }
       
       const monthName = new Date(selectedYear, selectedMonth - 1).toLocaleDateString('id-ID', { 
@@ -571,6 +607,10 @@ const MonthlyAttendancePage = () => {
     const matchesDepartment = departmentFilter === 'all' || item.department === departmentFilter;
     
     return matchesSearch && matchesDepartment;
+  }).sort((a, b) => {
+    const posA = a.position || '';
+    const posB = b.position || '';
+    return posA.localeCompare(posB);
   });
 
   const totalEmployees = filteredAttendance.length;
@@ -752,9 +792,10 @@ const MonthlyAttendancePage = () => {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>ID Pegawai</TableHead>
+                  <TableHead>NIP</TableHead>
                   <TableHead>Nama</TableHead>
-                  <TableHead>Bidang</TableHead>
+                  <TableHead>Jabatan</TableHead>
+                  <TableHead>Unit Kerja</TableHead>
                   <TableHead className="text-center">Total Hari</TableHead>
                   <TableHead className="text-center">Hadir*</TableHead>
                   <TableHead className="text-center">Terlambat</TableHead>
@@ -767,8 +808,9 @@ const MonthlyAttendancePage = () => {
                 {filteredAttendance.map((item) => (
                   <>
                     <TableRow key={item.id}>
-                      <TableCell className="font-medium">{item.employee_id}</TableCell>
+                      <TableCell>{item.nip}</TableCell>
                       <TableCell>{item.name}</TableCell>
+                      <TableCell>{item.position}</TableCell>
                       <TableCell>{item.department}</TableCell>
                       <TableCell className="text-center">{item.total_days}</TableCell>
                       <TableCell className="text-center text-green-600 font-semibold">{item.present_days}</TableCell>
@@ -900,14 +942,42 @@ const MonthlyAttendancePage = () => {
         </CardContent>
       </Card>
       
-      {/* Hidden PDF template */}
-      <MonthlyAttendancePdfReport 
+      {/* Hidden PDF template container */}
+      <div 
         ref={pdfRef} 
-        monthYear={new Date(selectedYear, selectedMonth - 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
-        totalWorkingDays={filteredAttendance.length > 0 ? filteredAttendance[0].total_days : 0}
-        totalHours={filteredAttendance.length > 0 ? (filteredAttendance[0].total_days * 7.5) : 0}
-        data={filteredAttendance}
-      />
+        style={{ 
+          position: 'absolute', 
+          left: '-9999px',
+          top: 0,
+          width: '297mm', // Force A4 landscape width so html2canvas can render text correctly
+          opacity: 0,
+          pointerEvents: 'none',
+          zIndex: -1
+        }}
+      >
+        {(() => {
+          // Group attendance by position
+          const grouped: Record<string, any[]> = {};
+          filteredAttendance.forEach(item => {
+            const pos = item.position || 'Tidak Ada Jabatan';
+            if (!grouped[pos]) grouped[pos] = [];
+            grouped[pos].push(item);
+          });
+          
+          const monthYearStr = new Date(selectedYear, selectedMonth - 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+          
+          return Object.entries(grouped).sort((a,b) => a[0].localeCompare(b[0])).map(([jabatan, items], index) => (
+            <MonthlyAttendancePdfReport 
+              key={index}
+              monthYear={monthYearStr}
+              totalWorkingDays={items.length > 0 ? items[0].total_days : 0}
+              totalHours={items.length > 0 ? (items[0].total_days * 7.5) : 0}
+              data={items}
+              jabatan={jabatan}
+            />
+          ));
+        })()}
+      </div>
     </div>
   );
 };

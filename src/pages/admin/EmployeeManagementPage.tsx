@@ -154,13 +154,11 @@ const EmployeeManagementPage = () => {
 
       console.log("Target employee:", targetEmployee);
 
-      // Attempt to delete the profile
-      console.log("Attempting to delete profile...");
-      const { error: deleteError, data: deleteData } = await supabase
-        .from("profiles")
-        .delete()
-        .eq("user_id", userId)
-        .select(); // Select to see what was deleted
+      // Attempt to delete the profile via RPC to handle related data safely
+      console.log("Attempting to delete profile via RPC...");
+      const { error: deleteError, data: deleteData } = await (supabase.rpc as any)(
+        "delete_user_profile", { target_user_id: userId }
+      );
 
       console.log("Delete result:", { error: deleteError, data: deleteData });
 
@@ -169,10 +167,8 @@ const EmployeeManagementPage = () => {
         throw new Error(`Gagal menghapus pegawai: ${deleteError.message}`);
       }
 
-      if (!deleteData || deleteData.length === 0) {
-        throw new Error(
-          "Tidak ada data yang dihapus. Pegawai mungkin tidak ditemukan.",
-        );
+      if (!deleteData) {
+        throw new Error("Gagal menghapus pegawai atau data tidak ditemukan.");
       }
 
       console.log("Delete successful");
@@ -273,7 +269,7 @@ const EmployeeManagementPage = () => {
                   <TableHead>Nama</TableHead>
                   <TableHead>NIP</TableHead>
                   <TableHead>Jabatan</TableHead>
-                  <TableHead>Bidang</TableHead>
+                  <TableHead>Unit Kerja</TableHead>
                   <TableHead>Role</TableHead>
                   <TableHead>Tanggal Bergabung</TableHead>
                   <TableHead>Aksi</TableHead>
