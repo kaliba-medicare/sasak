@@ -32,7 +32,7 @@ export const MonthlyAttendancePdfReport = forwardRef<HTMLDivElement, PdfReportPr
             <h2 style={{ fontSize: '16px', margin: '0 0 5px 0', textTransform: 'uppercase' }}>Pemerintah Kabupaten Lombok Utara</h2>
             <h1 style={{ fontSize: '18px', margin: '0 0 5px 0', fontWeight: 'bold' }}>DINAS KOMUNIKASI DAN INFORMATIKA</h1>
             <h3 style={{ fontSize: '14px', margin: '0', fontWeight: 'normal' }}>
-              REKAPITULASI PERSENTASE KEHADIRAN PEGAWAI NEGERI SIPIL / CALON PEGAWAI NEGERI SIPIL
+              REKAPITULASI PERSENTASE KEHADIRAN PEGAWAI PEMERINTAH DENGAN PERJANJIAN KERJA (PPPK) PARUH WAKTU
             </h3>
             {jabatan && (
               <h3 style={{ fontSize: '14px', margin: '5px 0 0 0', fontWeight: 'bold' }}>
